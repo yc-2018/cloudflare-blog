@@ -15,6 +15,7 @@ interface Env {
 
 type Visibility = "public" | "private" | "password";
 type ImageHostProvider = "imgbb" | "pixhost";
+const untaggedArticleFilter = "__untagged__"; // Reserved tag query value for articles without article_tags rows.
 
 interface ArticleRow {
   id: number;
@@ -28,6 +29,7 @@ interface ArticleRow {
   view_count: number;
   created_at: string;
   updated_at: string;
+  deleted_at?: string | null;
 }
 
 interface TagRow {
@@ -151,13 +153,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return await handleMessages(context, segments.slice(1));
     }
 
-    if (segments[0] === "tags" && context.request.method === "GET") {
-      return json({
-        tags: await listTags(context.env.DB, {
-          authenticated: await isAuthenticated(context.request, context.env),
-          search: url.searchParams.get("search") ?? ""
-        })
-      });
+    if (segments[0] === "tags") {
+      return await handleTags(context, segments.slice(1));
     }
 
     return jsonError("NOT_FOUND", "接口不存在", 404);
@@ -189,6 +186,23 @@ async function handleStatistics(context: EventContext<Env, string, unknown>, seg
     }
     throw error;
   }
+}
+
+/** Routes tag listing requests used by filters and editor suggestions. */
+async function handleTags(context: EventContext<Env, string, unknown>, segments: string[]) {
+  const { request, env } = context;
+
+  if (segments.length === 0 && request.method === "GET") {
+    const url = new URL(request.url);
+    return json({
+      tags: await listTags(env.DB, {
+        authenticated: await isAuthenticated(request, env),
+        search: url.searchParams.get("search") ?? ""
+      })
+    });
+  }
+
+  return jsonError("METHOD_NOT_ALLOWED", "不支持的标签请求", 405);
 }
 
 /** Routes authenticated image uploads to third-party hosts. */
@@ -348,13 +362,19 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
 
   if (segments.length === 0 && request.method === "GET") {
     const url = new URL(request.url);
+    const deleted = url.searchParams.get("deleted") === "1"; // Whether the administrator is viewing the article recycle bin.
+    if (deleted) {
+      await requireAuth(request, env);
+    }
+
     return json({
       ...(await listArticles(env.DB, {
-        authenticated,
+        authenticated: deleted ? true : authenticated,
         search: url.searchParams.get("search") ?? "",
         tag: url.searchParams.get("tag") ?? "",
         page: parsePositiveInteger(url.searchParams.get("page"), 1),
-        limit: articlePageSize
+        limit: articlePageSize,
+        deleted
       }))
     });
   }
@@ -371,8 +391,27 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
     return jsonError("NOT_FOUND", "文章不存在", 404);
   }
 
+  if (segments.length === 2 && segments[1] === "restore" && request.method === "POST") {
+    await requireAuth(request, env);
+    const result = await env.DB
+      .prepare("UPDATE articles SET deleted_at = NULL, updated_at = datetime('now') WHERE slug = ? AND deleted_at IS NOT NULL")
+      .bind(slug)
+      .run();
+
+    if (result.meta.changes === 0) {
+      return jsonError("NOT_FOUND", "回收站里没有这篇文章", 404);
+    }
+
+    return json({ ok: true });
+  }
+
   if (request.method === "GET") {
-    const article = await getArticleBySlug(env.DB, slug);
+    const includeDeleted = new URL(request.url).searchParams.get("deleted") === "1"; // Whether an administrator is opening a recycled article.
+    if (includeDeleted) {
+      await requireAuth(request, env);
+    }
+
+    const article = await getArticleBySlug(env.DB, slug, includeDeleted);
     if (!article || (!authenticated && article.visibility === "private" && !article.access_password)) {
       return jsonError("NOT_FOUND", "文章不存在或需要登录后查看", 404);
     }
@@ -409,14 +448,18 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
 
   if (request.method === "DELETE") {
     await requireAuth(request, env);
-    await env.DB.prepare("DELETE FROM article_tags WHERE article_id = (SELECT id FROM articles WHERE slug = ?)").bind(slug).run();
-    const result = await env.DB.prepare("DELETE FROM articles WHERE slug = ?").bind(slug).run();
+    const permanent = new URL(request.url).searchParams.get("permanent") === "1"; // Whether to physically delete the row.
+    const result = permanent
+      ? await permanentlyDeleteArticle(env.DB, slug)
+      : await env.DB
+          .prepare("UPDATE articles SET deleted_at = datetime('now'), updated_at = datetime('now') WHERE slug = ? AND deleted_at IS NULL")
+          .bind(slug)
+          .run();
 
     if (result.meta.changes === 0) {
       return jsonError("NOT_FOUND", "文章不存在", 404);
     }
 
-    await cleanupOrphanedTags(env.DB);
     return json({ ok: true });
   }
 
@@ -430,7 +473,7 @@ async function handleArticleSearch(context: EventContext<Env, string, unknown>) 
   const search = url.searchParams.get("search") ?? "";
   const tag = url.searchParams.get("tag") ?? "";
   const page = parsePositiveInteger(url.searchParams.get("page"), 1);
-  const [articleResult, allArticleResult, tags] = await Promise.all([
+  const [articleResult, allArticleResult, untaggedArticleTotal, tags] = await Promise.all([
     listArticles(env.DB, {
       authenticated,
       search,
@@ -445,6 +488,7 @@ async function handleArticleSearch(context: EventContext<Env, string, unknown>) 
       page: 1,
       limit: articlePageSize
     }),
+    countUntaggedArticles(env.DB, { authenticated, search }),
     listTags(env.DB, {
       authenticated,
       search
@@ -454,6 +498,7 @@ async function handleArticleSearch(context: EventContext<Env, string, unknown>) 
   return json({
     articleResult,
     allArticleTotal: allArticleResult.total,
+    untaggedArticleTotal,
     tags
   });
 }
@@ -657,11 +702,13 @@ function formatMessage(row: MessageRow, includeEmail: boolean) {
 
 async function listArticles(
   db: D1Database,
-  options: { authenticated: boolean; search: string; tag: string; page: number; limit: number }
+  options: { authenticated: boolean; search: string; tag: string; page: number; limit: number; deleted?: boolean }
 ) {
   const clauses: string[] = [];
   const bindings: Array<string | number> = [];
   let joinTag = "";
+
+  clauses.push(options.deleted ? "a.deleted_at IS NOT NULL" : "a.deleted_at IS NULL");
 
   if (!options.authenticated) {
     clauses.push("a.visibility = 'public'");
@@ -675,7 +722,15 @@ async function listArticles(
   }
 
   const tag = options.tag.trim();
-  if (tag) {
+  if (tag === untaggedArticleFilter) {
+    clauses.push(
+      `NOT EXISTS (
+        SELECT 1
+        FROM article_tags at_filter
+        WHERE at_filter.article_id = a.id
+      )`
+    );
+  } else if (tag) {
     joinTag = "JOIN article_tags at_filter ON at_filter.article_id = a.id JOIN tags t_filter ON t_filter.id = at_filter.tag_id";
     clauses.push("t_filter.slug = ?");
     bindings.push(tag);
@@ -689,7 +744,7 @@ async function listArticles(
     ${where}
   `;
   const query = `
-    SELECT a.id, a.slug, a.title, a.excerpt, a.cover_image_url, a.content_md, a.visibility, a.access_password, a.view_count, a.created_at, a.updated_at
+    SELECT a.id, a.slug, a.title, a.excerpt, a.cover_image_url, a.content_md, a.visibility, a.access_password, a.view_count, a.created_at, a.updated_at, a.deleted_at
     FROM articles a
     ${joinTag}
     ${where}
@@ -718,8 +773,44 @@ async function listArticles(
   };
 }
 
+/** Builds the visibility and search clauses used to count articles without tags. */
+export function buildUntaggedArticleFilter(authenticated: boolean, search: string) {
+  const clauses = [
+    "a.deleted_at IS NULL",
+    `NOT EXISTS (
+      SELECT 1
+      FROM article_tags at_untagged
+      WHERE at_untagged.article_id = a.id
+    )`
+  ];
+  const bindings: string[] = [];
+
+  if (!authenticated) {
+    clauses.unshift("a.visibility = 'public'");
+  }
+
+  const normalizedSearch = search.trim();
+  if (normalizedSearch) {
+    const like = `%${normalizedSearch}%`;
+    clauses.push("(a.title LIKE ? OR a.excerpt LIKE ? OR a.content_md LIKE ?)");
+    bindings.push(like, like, like);
+  }
+
+  return { where: `WHERE ${clauses.join(" AND ")}`, bindings };
+}
+
+/** Counts untagged articles available in the current authentication and search scope. */
+async function countUntaggedArticles(db: D1Database, options: { authenticated: boolean; search: string }) {
+  const filter = buildUntaggedArticleFilter(options.authenticated, options.search);
+  const result = await db
+    .prepare(`SELECT COUNT(*) AS total FROM articles a ${filter.where}`)
+    .bind(...filter.bindings)
+    .first<{ total: number }>();
+  return Number(result?.total ?? 0);
+}
+
 async function listTags(db: D1Database, options: { authenticated: boolean; search: string }) {
-  const filters: string[] = [];
+  const filters: string[] = ["a.deleted_at IS NULL"];
   const bindings: string[] = [];
 
   if (!options.authenticated) {
@@ -752,11 +843,11 @@ async function listTags(db: D1Database, options: { authenticated: boolean; searc
         LEFT JOIN article_tags at ON at.tag_id = t.id
         LEFT JOIN (${filteredArticleIds}) filtered ON filtered.id = at.article_id
         GROUP BY t.id
-        HAVING COUNT(filtered.id) > 0
+        HAVING COUNT(filtered.id) > 0 OR ? = 1
         ORDER BY lower(t.name)
       `
     )
-    .bind(...bindings)
+    .bind(...bindings, options.authenticated && !search ? 1 : 0)
     .all<TagRow & { count: number }>();
 
   return result.results ?? [];
@@ -819,10 +910,7 @@ async function replaceArticleTags(db: D1Database, articleId: number, tagNames: s
     const slug = slugify(name);
     const tag =
       (await db.prepare("SELECT id, name, slug FROM tags WHERE slug = ?").bind(slug).first<TagRow>()) ??
-      (await db
-        .prepare("INSERT INTO tags (name, slug) VALUES (?, ?) RETURNING id, name, slug")
-        .bind(name, slug)
-        .first<TagRow>());
+      (await db.prepare("INSERT INTO tags (name, slug) VALUES (?, ?) RETURNING id, name, slug").bind(name, slug).first<TagRow>());
 
     if (!tag) {
       throw new Error("Failed to upsert tag");
@@ -846,6 +934,15 @@ async function cleanupOrphanedTags(db: D1Database) {
       `
     )
     .run();
+}
+
+/** Permanently removes one article that is already in the recycle bin. */
+async function permanentlyDeleteArticle(db: D1Database, slug: string) {
+  await db
+    .prepare("DELETE FROM article_tags WHERE article_id = (SELECT id FROM articles WHERE slug = ? AND deleted_at IS NOT NULL)")
+    .bind(slug)
+    .run();
+  return db.prepare("DELETE FROM articles WHERE slug = ? AND deleted_at IS NOT NULL").bind(slug).run();
 }
 
 /** Loads article tags before delegating to the pure public-response formatter. */
@@ -873,17 +970,19 @@ export function formatArticleResponse(
     viewCount: Number(row.view_count ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    deletedAt: row.deleted_at ?? null,
     tags
   };
 }
 
-async function getArticleBySlug(db: D1Database, slug: string) {
+async function getArticleBySlug(db: D1Database, slug: string, includeDeleted = false) {
   return db
     .prepare(
       `
-        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at
+        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, deleted_at
         FROM articles
         WHERE slug = ?
+        ${includeDeleted ? "" : "AND deleted_at IS NULL"}
       `
     )
     .bind(slug)

@@ -93,6 +93,12 @@ button {
   padding: 34px 0 56px;
 }
 
+.layout:not(.layout-detail) {
+  height: calc(100vh - 73px);
+  overflow: hidden;
+  padding: 28px 0 32px;
+}
+
 .layout-detail {
   display: block;
 }
@@ -105,6 +111,12 @@ button {
   position: sticky;
   top: 88px;
   align-self: start;
+  height: 100%;
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .search-box {
@@ -215,6 +227,7 @@ button {
 }
 
 .tag-panel {
+  position: relative;
   margin-top: 22px;
 }
 
@@ -254,6 +267,37 @@ button {
   color: #1f3a2f;
 }
 
+.tag-filter.untagged {
+  background: #f7f8f5;
+  color: #858b83;
+}
+
+.tag-filter.untagged span {
+  color: #9aa098;
+}
+
+.tag-filter.untagged:hover,
+.tag-filter.untagged.active {
+  background: #eff2ec;
+  color: #526057;
+}
+
+.tag-filter.trash {
+  margin-top: 10px;
+  background: #fff8f8;
+  color: #9f3a3a;
+}
+
+.tag-filter.trash span {
+  color: #b45858;
+}
+
+.tag-filter.trash:hover,
+.tag-filter.trash.active {
+  background: #ffecec;
+  color: #7f1d1d;
+}
+
 .tag-filter:disabled {
   cursor: wait;
   opacity: 0.72;
@@ -267,6 +311,14 @@ button {
 
 .content-area {
   min-width: 0;
+}
+
+.layout:not(.layout-detail) .content-area {
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 6px;
+  scrollbar-gutter: stable;
 }
 
 .content-heading {
@@ -492,6 +544,10 @@ button {
   object-position: center;
 }
 
+.static-cover {
+  cursor: default;
+}
+
 .article-main {
   min-width: 0;
   border: 0;
@@ -499,6 +555,10 @@ button {
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.static-article-main {
+  cursor: default;
 }
 
 .article-main h2 {
@@ -592,6 +652,15 @@ button {
   align-items: center;
   gap: 8px;
   color: #6b756b;
+}
+
+.trash-row-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.load-more-button {
+  margin-top: 18px;
 }
 
 .tag-list {
@@ -1207,6 +1276,35 @@ button {
   padding: 14px 16px 16px;
 }
 
+.content-field {
+  display: grid;
+  gap: 7px;
+}
+
+.editor-compose-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.editor-compose-heading label {
+  display: block;
+}
+
+.editor-compose-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.editor-convert-button {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -1531,6 +1629,8 @@ textarea {
 
   .layout {
     display: block;
+    height: auto;
+    overflow: visible;
     width: min(100% - 28px, 680px);
     padding-top: 20px;
   }
@@ -1547,7 +1647,17 @@ textarea {
 
   .sidebar {
     position: static;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
     margin-bottom: 24px;
+  }
+
+  .layout:not(.layout-detail) .content-area {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
   }
 
   .tag-panel {

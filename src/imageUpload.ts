@@ -19,6 +19,57 @@ export interface PreparedImage {
   convertedToWebp: boolean;
 }
 
+export interface ImageLinkConversion {
+  content: string;
+  convertedCount: number;
+}
+
+const imagePathPattern = /\.(?:avif|bmp|gif|ico|jpe?g|png|svg|webp)$/i; // Image extensions supported by Markdown previews and browsers.
+
+/** Wraps standalone image URLs in Markdown image syntax while leaving code blocks and existing Markdown untouched. */
+export function convertStandaloneImageLinks(content: string): ImageLinkConversion {
+  let convertedCount = 0;
+  let fenceMarker = "";
+  const convertedContent = content
+    .split(/(\r?\n)/)
+    .map((part) => {
+      if (/^\r?\n$/.test(part)) {
+        return part;
+      }
+
+      const fenceMatch = part.match(/^\s*(`{3,}|~{3,})/);
+      if (fenceMatch) {
+        const marker = fenceMatch[1][0];
+        fenceMarker = fenceMarker === marker ? "" : fenceMarker || marker;
+        return part;
+      }
+      if (fenceMarker || /^ {4}/.test(part)) {
+        return part;
+      }
+
+      const urlLine = part.match(/^(\s*)(https?:\/\/\S+?)(\s*)$/i);
+      if (!urlLine || !isImageUrl(urlLine[2])) {
+        return part;
+      }
+
+      convertedCount += 1;
+      return `${urlLine[1]}${markdownImage(urlLine[2], "")}${urlLine[3]}`;
+    })
+    .join("");
+
+  return { content: convertedContent, convertedCount };
+}
+
+/** Checks an HTTP URL's path for a common image extension. */
+function isImageUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) && imagePathPattern.test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
 /** Converts pasted static images to bounded WebP while preserving GIF animation. */
 export async function prepareImageForUpload(file: File): Promise<PreparedImage> {
   if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/webp") {

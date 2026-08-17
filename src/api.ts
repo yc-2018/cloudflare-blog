@@ -90,9 +90,10 @@ export async function listTags(params: { search?: string } = {}) {
   return requestJson<{ tags: Tag[] }>(`/api/tags${query ? `?${query}` : ""}`);
 }
 
-export async function getArticle(slug: string, password = "") {
+export async function getArticle(slug: string, password = "", includeDeleted = false) {
   const searchParams = new URLSearchParams();
   if (password) searchParams.set("password", password);
+  if (includeDeleted) searchParams.set("deleted", "1");
   const query = searchParams.toString();
   return requestJson<{ article: Article }>(`/api/articles/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`);
 }
@@ -120,6 +121,25 @@ export async function updateArticle(slug: string, input: ArticleInput) {
 export async function deleteArticle(slug: string) {
   return requestJson<{ ok: boolean }>(`/api/articles/${encodeURIComponent(slug)}`, {
     method: "DELETE"
+  });
+}
+
+export async function listDeletedArticles(params: { page?: number; search?: string } = {}) {
+  const searchParams = new URLSearchParams({ deleted: "1" });
+  if (params.page) searchParams.set("page", String(params.page));
+  if (params.search) searchParams.set("search", params.search);
+  return requestJson<ArticleListResponse>(`/api/articles?${searchParams}`);
+}
+
+export async function permanentlyDeleteArticle(slug: string) {
+  return requestJson<{ ok: boolean }>(`/api/articles/${encodeURIComponent(slug)}?permanent=1`, {
+    method: "DELETE"
+  });
+}
+
+export async function restoreArticle(slug: string) {
+  return requestJson<{ ok: boolean }>(`/api/articles/${encodeURIComponent(slug)}/restore`, {
+    method: "POST"
   });
 }
 

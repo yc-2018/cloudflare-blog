@@ -7,11 +7,13 @@ import remarkGfm from "remark-gfm";
 import { remarkHighlightMark } from "remark-highlight-mark";
 import {
   ArrowLeft,
+  Archive,
   BarChart3,
   MessageSquareText,
   Eye,
   EyeOff,
   FilePenLine,
+  ImageIcon,
   Lock,
   LogIn,
   LogOut,
@@ -23,6 +25,7 @@ import {
   TagIcon,
   Tag,
   Trash2,
+  WrapText,
   X
 } from "lucide-react";
 import {
@@ -35,10 +38,13 @@ import {
   getMessageCaptcha,
   getMe,
   listArticles,
+  listDeletedArticles,
   listMessages,
   listTags,
   login,
   logout,
+  permanentlyDeleteArticle,
+  restoreArticle,
   searchArticles,
   updateArticle,
   ApiRequestError
@@ -53,13 +59,26 @@ import type {
   Tag as TagType,
   Visibility
 } from "./types";
-import { articleToInput, emptyArticleInput, formatArticleTimeTitle, formatDate, sampleMarkdown } from "./utils";
-import { imageHostLabels, markdownImage, prepareImageForUpload, uploadImageWithFallback } from "./imageUpload";
+import {
+  articleToInput,
+  doubleMarkdownLineBreaks,
+  emptyArticleInput,
+  formatArticleTimeTitle,
+  formatDate,
+  sampleMarkdown
+} from "./utils";
+import {
+  convertStandaloneImageLinks,
+  imageHostLabels,
+  markdownImage,
+  prepareImageForUpload,
+  uploadImageWithFallback
+} from "./imageUpload";
 import { ArticleViewCount } from "./ArticleViewCount";
 import { StatisticsPage } from "./StatisticsPage";
 import type { Options as RehypeSanitizeOptions } from "rehype-sanitize";
 
-type View = "list" | "article" | "editor" | "guestbook" | "statistics";
+type View = "list" | "article" | "editor" | "guestbook" | "statistics" | "trash";
 interface PasswordPromptState {
   slug: string;
   value: string;
@@ -69,10 +88,12 @@ const firstArticlePage = 1; // Initial article list page.
 const siteTitle = "仰晨博客"; // Browser title used outside article pages.
 const guestbookPath = "/guestbook"; // Shareable path for the guestbook page.
 const statisticsPath = "/statistics"; // Shareable path for administrator visit statistics.
+const trashPath = "/trash"; // Shareable path for the administrator article recycle bin.
 const searchDebounceMs = 650; // Delay before querying as the visitor types.
 const minAutoSearchLength = 2; // One-character input stays local to save Cloudflare requests.
 const guestbookCooldownKey = "guestbook:lastSentAt"; // Local storage key for client-side guest cooldown.
 const passwordQueryKey = "password"; // URL query key used by password article share links.
+const untaggedArticleFilter = "__untagged__"; // Reserved API filter for articles that have no tags.
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -109,6 +130,7 @@ function slugFromPath(pathname: string) {
 
 export function App() {
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
+  const [deletedArticles, setDeletedArticles] = useState<ArticleSummary[]>([]);
   const [tags, setTags] = useState<TagType[]>([]);
   const [tagOptions, setTagOptions] = useState<TagType[]>([]);
   const [selectedTag, setSelectedTag] = useState("");
@@ -124,8 +146,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [articlePage, setArticlePage] = useState(firstArticlePage);
+  const [deletedArticlePage, setDeletedArticlePage] = useState(firstArticlePage);
   const [articleTotal, setArticleTotal] = useState(0);
   const [allArticleTotal, setAllArticleTotal] = useState(0);
+  const [deletedArticleTotal, setDeletedArticleTotal] = useState(0);
+  const [untaggedArticleTotal, setUntaggedArticleTotal] = useState(0);
   const [hasMoreArticles, setHasMoreArticles] = useState(false);
   const [guestbookMessages, setGuestbookMessages] = useState<GuestbookMessage[]>([]);
   const [guestbookDraft, setGuestbookDraft] = useState<GuestbookInput>(defaultGuestbookDraft);
@@ -138,6 +163,11 @@ export function App() {
   const [guestbookCooldown, setGuestbookCooldown] = useState(0);
   const [articleSubmitting, setArticleSubmitting] = useState(false);
   const [articleDeleting, setArticleDeleting] = useState(false);
+  const [articleDeletingSlug, setArticleDeletingSlug] = useState("");
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashLoadingMore, setTrashLoadingMore] = useState(false);
+  const [trashArticleAction, setTrashArticleAction] = useState("");
+  const [hasMoreDeletedArticles, setHasMoreDeletedArticles] = useState(false);
   const [editingArticleSlug, setEditingArticleSlug] = useState("");
   const [routeAction, setRouteAction] = useState("");
   const [authAction, setAuthAction] = useState("");
@@ -145,6 +175,7 @@ export function App() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const articleRequestId = useRef(0);
+  const contentAreaRef = useRef<HTMLElement | null>(null);
   const articleSearchEffectReady = useRef(false);
   const listScrollY = useRef(0);
   const articleSubmittingRef = useRef(false);
@@ -180,6 +211,8 @@ export function App() {
           ? `${siteTitle} - 留言板`
           : view === "statistics"
             ? `${siteTitle} - 访问统计`
+            : view === "trash"
+              ? `${siteTitle} - 回收站`
             : siteTitle;
   }, [activeArticle, view]);
 
@@ -210,7 +243,10 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [error]);
 
-  const selectedTagName = useMemo(() => tags.find((tag) => tag.slug === selectedTag)?.name ?? "", [selectedTag, tags]);
+  const selectedTagName = useMemo(
+    () => selectedTag === untaggedArticleFilter ? "无标签文章" : tags.find((tag) => tag.slug === selectedTag)?.name ?? "",
+    [selectedTag, tags]
+  );
   const effectiveSearch = useMemo(() => search.trim(), [search]);
   const canApplySearch = effectiveSearch.length === 0 || effectiveSearch.length >= minAutoSearchLength;
 
@@ -232,13 +268,27 @@ export function App() {
     }
   }, [authenticated, view, activeArticle?.id]);
 
+  useEffect(() => {
+    if (!authenticated) {
+      setDeletedArticles([]);
+      setDeletedArticleTotal(0);
+      if (view === "trash") {
+        showList();
+      }
+      return;
+    }
+  }, [authenticated, view]);
+
   async function bootstrap() {
     setLoading(true);
     try {
       const me = await getMe();
       setAuthenticated(me.authenticated);
       await refreshContent();
-      await syncViewFromLocation();
+      if (me.authenticated && window.location.pathname !== trashPath) {
+        await refreshDeletedArticles();
+      }
+      await syncViewFromLocation(me.authenticated);
     } catch (caught) {
       setError(asErrorMessage(caught));
     } finally {
@@ -246,13 +296,29 @@ export function App() {
     }
   }
 
-  async function syncViewFromLocation() {
+  async function syncViewFromLocation(authenticatedOverride = authenticated) {
     if (window.location.pathname === statisticsPath) {
       invalidateArticleOpenRequest();
       setActiveArticle(null);
       setEditingSlug(null);
       setPasswordPrompt(null);
       setView("statistics");
+      return;
+    }
+
+    if (window.location.pathname === trashPath) {
+      invalidateArticleOpenRequest();
+      setActiveArticle(null);
+      setEditingSlug(null);
+      setPasswordPrompt(null);
+      if (!authenticatedOverride) {
+        setLoginOpen(true);
+        setView("list");
+        return;
+      }
+
+      setView("trash");
+      await refreshDeletedArticles();
       return;
     }
 
@@ -276,7 +342,15 @@ export function App() {
     }
 
     invalidateArticleOpenRequest();
-    await loadArticle(slug, false, new URLSearchParams(window.location.search).get(passwordQueryKey) ?? "");
+    const routeParams = new URLSearchParams(window.location.search); // Current article route query values.
+    const includeDeleted = routeParams.get("deleted") === "1"; // Whether this route targets an article in the recycle bin.
+    if (includeDeleted && !authenticatedOverride) {
+      setLoginOpen(true);
+      setView("list");
+      return;
+    }
+
+    await loadArticle(slug, false, routeParams.get(passwordQueryKey) ?? "", includeDeleted);
   }
 
   const refreshContent = useCallback(async () => {
@@ -294,9 +368,10 @@ export function App() {
       setArticlePage(articleResult.page);
       setArticleTotal(articleResult.total);
       setAllArticleTotal(result.allArticleTotal);
+      setUntaggedArticleTotal(result.untaggedArticleTotal);
       setHasMoreArticles(articleResult.hasMore);
       setTags(result.tags);
-      if (selectedTag && !result.tags.some((tag) => tag.slug === selectedTag)) {
+      if (selectedTag && selectedTag !== untaggedArticleFilter && !result.tags.some((tag) => tag.slug === selectedTag)) {
         setSelectedTag("");
       }
       if (!appliedSearch) {
@@ -363,23 +438,66 @@ export function App() {
       return;
     }
 
+    const scrollElement = contentAreaRef.current; // Article column scroll container on desktop list pages.
+    if (!scrollElement) {
+      return;
+    }
+
     const handleScroll = () => {
-      const scrollBottom = window.innerHeight + window.scrollY; // Current viewport bottom.
-      const triggerLine = document.documentElement.scrollHeight - 360; // Distance from bottom before loading more.
+      const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight; // Current article column bottom.
+      const triggerLine = scrollElement.scrollHeight - 360; // Distance from bottom before loading more.
 
       if (scrollBottom >= triggerLine) {
         void loadMoreArticles();
       }
     };
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
+    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
-    return () => window.removeEventListener("scroll", handleScroll);
+    return () => scrollElement.removeEventListener("scroll", handleScroll);
   }, [hasMoreArticles, loadMoreArticles, loading, loadingMore, view]);
 
   async function refreshTagOptions() {
     const result = await listTags();
     setTagOptions(result.tags);
+  }
+
+  /** Refreshes the first page of administrator-only deleted articles. */
+  async function refreshDeletedArticles() {
+    setTrashLoading(true);
+    setTrashLoadingMore(false);
+    try {
+      const result = await listDeletedArticles({ page: firstArticlePage });
+      setDeletedArticles(result.articles);
+      setDeletedArticlePage(result.page);
+      setDeletedArticleTotal(result.total);
+      setHasMoreDeletedArticles(result.hasMore);
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      setTrashLoading(false);
+    }
+  }
+
+  /** Loads another page of deleted articles when the recycle bin has more rows. */
+  async function loadMoreDeletedArticles() {
+    if (trashLoading || trashLoadingMore || !hasMoreDeletedArticles) {
+      return;
+    }
+
+    const nextPage = deletedArticlePage + 1; // Next recycle-bin page requested by the administrator.
+    setTrashLoadingMore(true);
+    try {
+      const result = await listDeletedArticles({ page: nextPage });
+      setDeletedArticles((currentArticles) => [...currentArticles, ...result.articles]);
+      setDeletedArticlePage(result.page);
+      setDeletedArticleTotal(result.total);
+      setHasMoreDeletedArticles(result.hasMore);
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      setTrashLoadingMore(false);
+    }
   }
 
   async function openArticle(slug: string) {
@@ -389,7 +507,7 @@ export function App() {
 
     const actionKey = `article-${slug}`; // Display key for this article request.
     const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
-    listScrollY.current = window.scrollY;
+    listScrollY.current = contentAreaRef.current?.scrollTop ?? window.scrollY;
     try {
       await loadArticle(slug, true);
     } finally {
@@ -398,13 +516,13 @@ export function App() {
   }
 
   /** Loads an article and moves the single-page app into article view. */
-  async function loadArticle(slug: string, pushUrl: boolean, password = "") {
+  async function loadArticle(slug: string, pushUrl: boolean, password = "", includeDeleted = false) {
     const requestId = articleOpenRequestId.current + 1; // Request allowed to commit the next article route state.
     articleOpenRequestId.current = requestId;
     setError("");
     setLoading(true);
     try {
-      const result = await getArticle(slug, password);
+      const result = await getArticle(slug, password, includeDeleted);
       if (requestId !== articleOpenRequestId.current) {
         return;
       }
@@ -421,6 +539,9 @@ export function App() {
         const nextUrl = new URL(articlePath(result.article.slug), window.location.origin);
         if (password && result.article.visibility === "password") {
           nextUrl.searchParams.set(passwordQueryKey, password);
+        }
+        if (includeDeleted) {
+          nextUrl.searchParams.set("deleted", "1");
         }
         if (window.location.pathname + window.location.search !== nextUrl.pathname + nextUrl.search) {
           window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}`);
@@ -446,6 +567,21 @@ export function App() {
       if (requestId === articleOpenRequestId.current) {
         setLoading(false);
       }
+    }
+  }
+
+  /** Opens a recycled article for administrator read-only viewing. */
+  async function openDeletedArticle(slug: string) {
+    if (routeActionRef.current) {
+      return;
+    }
+
+    const actionKey = `deleted-article-${slug}`; // Display key for this recycled article request.
+    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    try {
+      await loadArticle(slug, true, "", true);
+    } finally {
+      releaseRouteAction(actionOwner, actionKey);
     }
   }
 
@@ -491,8 +627,79 @@ export function App() {
       window.history.pushState(null, "", "/");
     }
     window.requestAnimationFrame(() => {
-      window.scrollTo({ top: options.restoreScroll ? listScrollY.current : 0, behavior: "auto" });
+      const scrollTop = options.restoreScroll ? listScrollY.current : 0; // Stored article-column scroll position.
+      if (contentAreaRef.current) {
+        contentAreaRef.current.scrollTop = scrollTop;
+      } else {
+        window.scrollTo({ top: scrollTop, behavior: "auto" });
+      }
     });
+  }
+
+  /** Returns from the recycle bin or detail views before applying an article-list tag filter. */
+  function selectArticleTag(tagSlug: string) {
+    showList();
+    setSelectedTag(tagSlug);
+  }
+
+  /** Opens the administrator article recycle bin and refreshes its first page. */
+  async function showTrash(pushUrl = true) {
+    if (routeActionRef.current || !authenticated) {
+      return;
+    }
+
+    invalidateArticleOpenRequest();
+    const actionKey = "trash"; // Display key for the recycle-bin refresh.
+    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    setActiveArticle(null);
+    setEditingSlug(null);
+    setPasswordPrompt(null);
+    setView("trash");
+    if (pushUrl && window.location.pathname !== trashPath) {
+      window.history.pushState(null, "", trashPath);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    try {
+      await refreshDeletedArticles();
+    } finally {
+      releaseRouteAction(actionOwner, actionKey);
+    }
+  }
+
+  /** Restores one article from the recycle bin back to the normal list. */
+  async function restoreDeletedArticle(slug: string) {
+    const actionKey = `restore-${slug}`; // Button-level action key for restoring an article.
+    setTrashArticleAction(actionKey);
+    setError("");
+    try {
+      await restoreArticle(slug);
+      setMessage("文章已恢复");
+      await Promise.all([refreshDeletedArticles(), refreshContent()]);
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      setTrashArticleAction("");
+    }
+  }
+
+  /** Permanently deletes one article from the recycle bin. */
+  async function permanentlyDeleteDeletedArticle(slug: string) {
+    if (!window.confirm("确定永久删除这篇文章吗？这个操作无法撤销。")) {
+      return;
+    }
+
+    const actionKey = `permanent-${slug}`; // Button-level action key for irreversible deletion.
+    setTrashArticleAction(actionKey);
+    setError("");
+    try {
+      await permanentlyDeleteArticle(slug);
+      setMessage("文章已永久删除");
+      await refreshDeletedArticles();
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      setTrashArticleAction("");
+    }
   }
 
   /** Opens the shareable guestbook view and refreshes its current messages. */
@@ -617,6 +824,9 @@ export function App() {
     if (activeArticle.visibility === "password" && currentPassword) {
       shareUrl.searchParams.set(passwordQueryKey, currentPassword);
     }
+    if (activeArticle.deletedAt) {
+      shareUrl.searchParams.set("deleted", "1");
+    }
 
     try {
       await navigator.clipboard.writeText(`${activeArticle.title}\n${shareUrl.toString()}`);
@@ -669,24 +879,28 @@ export function App() {
       return;
     }
 
-    if (!window.confirm("确定删除这篇文章吗？")) {
+    if (!window.confirm("确定将这篇文章移入回收站吗？")) {
       return;
     }
 
     articleDeletingRef.current = true;
     setArticleDeleting(true);
+    setArticleDeletingSlug(slug);
     setError("");
     try {
       await deleteArticle(slug);
-      setMessage("文章已删除");
-      setActiveArticle(null);
-      showList();
-      await refreshContent();
+      setMessage("文章已移入回收站");
+      if (activeArticle?.slug === slug) {
+        setActiveArticle(null);
+        showList();
+      }
+      await Promise.all([refreshContent(), authenticated ? refreshDeletedArticles() : Promise.resolve()]);
     } catch (caught) {
       setError(asErrorMessage(caught));
     } finally {
       articleDeletingRef.current = false;
       setArticleDeleting(false);
+      setArticleDeletingSlug("");
     }
   }
 
@@ -696,7 +910,7 @@ export function App() {
     setAuthenticated(true);
     setLoginOpen(false);
     setMessage("已登录");
-    await refreshContent();
+    await Promise.all([refreshContent(), refreshDeletedArticles()]);
   }
 
   async function handleLogout() {
@@ -712,6 +926,8 @@ export function App() {
       setAuthenticated(false);
       setActiveArticle(null);
       setEditingSlug(null);
+      setDeletedArticles([]);
+      setDeletedArticleTotal(0);
       showList();
       setMessage("已退出登录");
       await refreshContent();
@@ -948,10 +1164,14 @@ export function App() {
 
       <main
         className={
-          view === "list" ? "layout" : view === "editor" ? "layout layout-detail layout-editor" : "layout layout-detail"
+          view === "list" || view === "trash"
+            ? "layout"
+            : view === "editor"
+              ? "layout layout-detail layout-editor"
+              : "layout layout-detail"
         }
       >
-        {view === "list" && (
+        {(view === "list" || view === "trash") && (
           <aside className="sidebar">
             <div className="search-box">
               <span className="search-hint-icon" tabIndex={0} aria-label="搜索提示">
@@ -987,29 +1207,55 @@ export function App() {
               <button
                 className={selectedTag ? "tag-filter" : "tag-filter active"}
                 type="button"
-                onClick={() => setSelectedTag("")}
+                onClick={() => selectArticleTag("")}
                 disabled={loading || loadingMore}
               >
                 全部文章
                 <span>{loading && !selectedTag ? <ButtonSpinner /> : allArticleTotal}</span>
               </button>
+              {untaggedArticleTotal > 0 && (
+                <button
+                  className={
+                    selectedTag === untaggedArticleFilter ? "tag-filter untagged active" : "tag-filter untagged"
+                  }
+                  type="button"
+                  onClick={() => selectArticleTag(untaggedArticleFilter)}
+                  disabled={loading || loadingMore}
+                >
+                  无标签文章
+                  <span>
+                    {loading && selectedTag === untaggedArticleFilter ? <ButtonSpinner /> : untaggedArticleTotal}
+                  </span>
+                </button>
+              )}
               {tags.map((tag) => (
                 <button
                   className={selectedTag === tag.slug ? "tag-filter active" : "tag-filter"}
                   type="button"
                   key={tag.slug}
-                  onClick={() => setSelectedTag(tag.slug)}
+                  onClick={() => selectArticleTag(tag.slug)}
                   disabled={loading || loadingMore}
                 >
                   {tag.name}
                   <span>{loading && selectedTag === tag.slug ? <ButtonSpinner /> : tag.count ?? 0}</span>
                 </button>
               ))}
+              {authenticated && (
+                <button
+                  className={view === "trash" ? "tag-filter trash active" : "tag-filter trash"}
+                  type="button"
+                  onClick={() => void showTrash()}
+                  disabled={Boolean(routeAction || editingArticleSlug || articleSubmitting || articleDeleting)}
+                >
+                  回收站
+                  <span>{trashLoading && view === "trash" ? <ButtonSpinner /> : deletedArticleTotal}</span>
+                </button>
+              )}
             </section>
           </aside>
         )}
 
-        <section className="content-area">
+        <section className="content-area" ref={contentAreaRef}>
           {view === "list" && (
             <ArticleList
               articles={articles}
@@ -1021,8 +1267,26 @@ export function App() {
               authenticated={authenticated}
               editingSlug={editingArticleSlug}
               openingSlug={routeAction.startsWith("article-") ? routeAction.slice("article-".length) : ""}
+              deletingSlug={articleDeletingSlug}
               onOpen={openArticle}
               onEdit={editArticle}
+              onDelete={removeArticle}
+            />
+          )}
+
+          {view === "trash" && (
+            <DeletedArticleList
+              articles={deletedArticles}
+              hasMore={hasMoreDeletedArticles}
+              loading={trashLoading}
+              loadingMore={trashLoadingMore}
+              action={trashArticleAction}
+              openingSlug={routeAction.startsWith("deleted-article-") ? routeAction.slice("deleted-article-".length) : ""}
+              onBack={() => showList()}
+              onOpen={(slug) => void openDeletedArticle(slug)}
+              onLoadMore={() => void loadMoreDeletedArticles()}
+              onRestore={(slug) => void restoreDeletedArticle(slug)}
+              onDelete={(slug) => void permanentlyDeleteDeletedArticle(slug)}
             />
           )}
 
@@ -1031,8 +1295,16 @@ export function App() {
               article={activeArticle}
               authenticated={authenticated}
               deleting={articleDeleting}
+              deleted={Boolean(activeArticle.deletedAt)}
               editing={editingArticleSlug === activeArticle.slug}
-              onBack={() => showList({ restoreScroll: true })}
+              onBack={() => {
+                if (activeArticle.deletedAt && authenticated) {
+                  void showTrash();
+                  return;
+                }
+
+                showList({ restoreScroll: true });
+              }}
               onEdit={() => editArticle(activeArticle.slug)}
               onDelete={() => removeArticle(activeArticle.slug)}
               onShare={() => void shareArticle()}
@@ -1461,8 +1733,10 @@ function ArticleList(props: {
   authenticated: boolean;
   editingSlug: string;
   openingSlug: string;
+  deletingSlug: string;
   onOpen: (slug: string) => void;
   onEdit: (slug: string) => void;
+  onDelete: (slug: string) => void;
 }) {
   const hasSearch = props.search.trim().length > 0;
   if (props.loading && !props.openingSlug && !props.editingSlug) {
@@ -1525,15 +1799,26 @@ function ArticleList(props: {
               {article.visibility === "private" && <Lock size={16} aria-label="登录可见" />}
               {article.visibility === "password" && <Lock size={16} aria-label="密码可见" />}
               {props.authenticated && (
-                <button
-                  className="icon-button subtle"
-                  type="button"
-                  onClick={() => props.onEdit(article.slug)}
-                  aria-label="编辑文章"
-                  disabled={Boolean(props.editingSlug || props.openingSlug)}
-                >
-                  {props.editingSlug === article.slug ? <ButtonSpinner /> : <FilePenLine size={16} />}
-                </button>
+                <>
+                  <button
+                    className="icon-button subtle"
+                    type="button"
+                    onClick={() => props.onEdit(article.slug)}
+                    aria-label="编辑文章"
+                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug)}
+                  >
+                    {props.editingSlug === article.slug ? <ButtonSpinner /> : <FilePenLine size={16} />}
+                  </button>
+                  <button
+                    className="icon-button subtle danger-icon"
+                    type="button"
+                    onClick={() => props.onDelete(article.slug)}
+                    aria-label="删除文章"
+                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug)}
+                  >
+                    {props.deletingSlug === article.slug ? <ButtonSpinner /> : <Trash2 size={16} />}
+                  </button>
+                </>
               )}
             </div>
           </article>
@@ -1547,6 +1832,98 @@ function ArticleList(props: {
             继续下滑加载更多
           </div>
         )
+      )}
+    </>
+  );
+}
+
+function DeletedArticleList(props: {
+  articles: ArticleSummary[];
+  hasMore: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  action: string;
+  openingSlug: string;
+  onBack: () => void;
+  onOpen: (slug: string) => void;
+  onLoadMore: () => void;
+  onRestore: (slug: string) => void;
+  onDelete: (slug: string) => void;
+}) {
+  if (props.loading) {
+    return <ArticleListSkeleton />;
+  }
+
+  return (
+    <>
+      <div className="content-heading compact">
+        <div>
+          <span className="eyebrow">管理员</span>
+          <h1>文章回收站</h1>
+        </div>
+        <button className="text-button ghost" type="button" onClick={props.onBack}>
+          <ArrowLeft size={16} />
+          返回文章
+        </button>
+      </div>
+      {props.articles.length === 0 ? (
+        <EmptyState title="回收站为空" description="删除的文章会先放在这里，只有这里的删除才是永久删除。" />
+      ) : (
+        <div className="article-list trash-article-list">
+          {props.articles.map((article) => (
+            <article className={article.coverImageUrl ? "article-row has-cover" : "article-row"} key={article.slug}>
+              {article.coverImageUrl && (
+                <div className="article-cover static-cover">
+                  <img src={article.coverImageUrl} alt="" loading="lazy" />
+                </div>
+              )}
+              <button
+                className="article-main"
+                type="button"
+                onClick={() => props.onOpen(article.slug)}
+                disabled={Boolean(props.action || props.openingSlug)}
+                aria-label={`查看文章 ${article.title}`}
+              >
+                <h2>{article.title}</h2>
+                {article.excerpt && <p>{article.excerpt}</p>}
+                <TagList tags={article.tags} />
+                <span className="article-row-meta">
+                  <span className="article-date" title={formatArticleTimeTitle(article.createdAt, article.updatedAt)}>
+                    {formatDate(article.updatedAt)}
+                  </span>
+                  <span>已删除</span>
+                </span>
+              </button>
+              <div className="row-actions trash-row-actions">
+                {props.openingSlug === article.slug && <ButtonSpinner />}
+                <button
+                  className="text-button ghost"
+                  type="button"
+                  onClick={() => props.onRestore(article.slug)}
+                  disabled={Boolean(props.action)}
+                >
+                  {props.action === `restore-${article.slug}` ? <ButtonSpinner /> : <Archive size={16} />}
+                  恢复
+                </button>
+                <button
+                  className="text-button danger"
+                  type="button"
+                  onClick={() => props.onDelete(article.slug)}
+                  disabled={Boolean(props.action)}
+                >
+                  {props.action === `permanent-${article.slug}` ? <ButtonSpinner /> : <Trash2 size={16} />}
+                  删除
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {props.hasMore && (
+        <button className="text-button full load-more-button" type="button" onClick={props.onLoadMore} disabled={props.loadingMore}>
+          {props.loadingMore ? <ButtonSpinner /> : null}
+          {props.loadingMore ? "加载中..." : "加载更多"}
+        </button>
       )}
     </>
   );
@@ -1611,6 +1988,7 @@ function ArticleView(props: {
   article: Article;
   authenticated: boolean;
   deleting: boolean;
+  deleted: boolean;
   editing: boolean;
   onBack: () => void;
   onEdit: () => void;
@@ -1629,7 +2007,7 @@ function ArticleView(props: {
           <Share2 size={16} />
           分享
         </button>
-        {props.authenticated && (
+        {props.authenticated && !props.deleted && (
           <div className="tool-group">
             <button className="text-button ghost" type="button" onClick={props.onEdit} disabled={props.editing || props.deleting}>
               {props.editing ? <ButtonSpinner /> : <FilePenLine size={16} />}
@@ -1651,6 +2029,12 @@ function ArticleView(props: {
           </span>
           <span className="dot" aria-hidden="true" />
           <ArticleViewCount count={props.article.viewCount} />
+          {props.deleted && (
+            <>
+              <span className="dot" aria-hidden="true" />
+              <span>已在回收站</span>
+            </>
+          )}
         </div>
       </header>
       <div className="markdown-body article-markdown">
@@ -1667,6 +2051,11 @@ export function MarkdownRenderer(props: { content: string }) {
       remarkPlugins={[remarkGfm, remarkHighlightMark, remarkHighlightMarkElement]}
       rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], [rehypeHighlight, { detect: true }]]}
       components={{
+        a: ({ children, node: _node, ...anchorProps }) => (
+          <a {...anchorProps} target="_blank" rel="noopener noreferrer">
+            {children}
+          </a>
+        ),
         pre: ({ children }) => <CodeBlock>{children}</CodeBlock>
       }}
     >
@@ -1846,6 +2235,32 @@ function Editor(props: {
     void uploadContentImage(image, event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
   }
 
+  /** Converts standalone image URL lines in the article body to Markdown images. */
+  function convertImageLinks() {
+    const result = convertStandaloneImageLinks(draftRef.current.content);
+    if (result.convertedCount === 0) {
+      props.onNotice("未识别到可转换的图片链接");
+      return;
+    }
+
+    setField("content", result.content);
+    props.onNotice(`已将 ${result.convertedCount} 个图片链接转为 Markdown`);
+    window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
+  }
+
+  /** Turns single line breaks into Markdown paragraph breaks outside fenced code blocks. */
+  function convertLineBreaks() {
+    const result = doubleMarkdownLineBreaks(draftRef.current.content);
+    if (result.convertedCount === 0) {
+      props.onNotice("没有需要转换的单个换行");
+      return;
+    }
+
+    setField("content", result.content);
+    props.onNotice(`已将 ${result.convertedCount} 个单换行转为双换行`);
+    window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
+  }
+
   return (
     <form className="editor" onSubmit={props.onSubmit}>
       <div className="content-heading compact">
@@ -1937,10 +2352,23 @@ function Editor(props: {
             )}
           </div>
           <div className="editor-compose">
-            <label className="content-field">
-              Markdown
+            <div className="content-field">
+              <div className="editor-compose-heading">
+                <label htmlFor="article-markdown-content">Markdown</label>
+                <div className="editor-compose-actions">
+                  <button className="text-button ghost editor-convert-button" type="button" onClick={convertLineBreaks}>
+                    <WrapText size={15} />
+                    换行变换行
+                  </button>
+                  <button className="text-button ghost editor-convert-button" type="button" onClick={convertImageLinks}>
+                    <ImageIcon size={15} />
+                    识别图片链接转md
+                  </button>
+                </div>
+              </div>
               <span className="image-upload-hint">在光标处粘贴图片，将自动插入 Markdown 图片链接</span>
               <textarea
+                id="article-markdown-content"
                 ref={contentTextareaRef}
                 required
                 value={props.draft.content}
@@ -1949,7 +2377,7 @@ function Editor(props: {
                 spellCheck={false}
                 disabled={Boolean(uploadingTarget)}
               />
-            </label>
+            </div>
           </div>
         </div>
 

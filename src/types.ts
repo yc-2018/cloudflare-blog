@@ -24,6 +24,7 @@ export interface ArticleSummary {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
   tags: Tag[];
 }
 
@@ -43,6 +44,7 @@ export interface ArticleListResponse {
 export interface ArticleSearchResponse {
   articleResult: ArticleListResponse;
   allArticleTotal: number;
+  untaggedArticleTotal: number;
   tags: Tag[];
 }
 

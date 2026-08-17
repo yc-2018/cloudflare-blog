@@ -21,7 +21,9 @@ describe("MarkdownRenderer", () => {
     expect(html).toContain("<h1><mark>标题</mark></h1>");
     expect(html).toContain("<p><mark>整段</mark></p>");
     expect(html).toContain("<li><mark>列表项</mark></li>");
-    expect(html).toContain('<a href="https://example.com"><mark>链接文字</mark></a>');
+    expect(html).toContain(
+      '<a href="https://example.com" target="_blank" rel="noopener noreferrer"><mark>链接文字</mark></a>'
+    );
     expect(html).toContain("<td><mark>表格内容</mark></td>");
   });
 
@@ -60,5 +62,16 @@ describe("MarkdownRenderer", () => {
     expect(html).toContain("<h2>Mysql为什么使用B+树作为索引结构？</h2>");
     expect(html).not.toContain("<font");
     expect(html).not.toContain("style=");
+  });
+
+  it("opens Markdown and automatically detected URLs in a new tab", () => {
+    const html = renderToStaticMarkup(
+      <MarkdownRenderer content={'[站点](https://example.com)\n\nhttps://example.org/path'} />
+    );
+
+    expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">站点</a>');
+    expect(html).toContain(
+      '<a href="https://example.org/path" target="_blank" rel="noopener noreferrer">https://example.org/path</a>'
+    );
   });
 });

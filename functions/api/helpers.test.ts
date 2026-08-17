@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildSearchSnippet,
+  buildUntaggedArticleFilter,
   formatArticleResponse,
   json,
   remainingCooldownSeconds,
@@ -110,6 +111,15 @@ describe("api helpers", () => {
 
     expect(snippet).toContain("关键词");
     expect(buildSearchSnippet({ title: "关键词", excerpt: "", content_md: "正文也有关键词" }, "关键词")).toBe("");
+  });
+
+  it("builds authentication-aware filters for untagged article counts", () => {
+    const publicFilter = buildUntaggedArticleFilter(false, "  Cloudflare ");
+
+    expect(publicFilter.where).toContain("a.visibility = 'public'");
+    expect(publicFilter.where).toContain("NOT EXISTS");
+    expect(publicFilter.bindings).toEqual(["%Cloudflare%", "%Cloudflare%", "%Cloudflare%"]);
+    expect(buildUntaggedArticleFilter(true, "").where).not.toContain("a.visibility = 'public'");
   });
 
   it("validates guest message input and requires guest-only fields", () => {
