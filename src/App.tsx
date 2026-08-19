@@ -29,7 +29,6 @@ import {
   X
 } from "lucide-react";
 import {
-  approveMessage,
   createArticle,
   createMessage,
   deleteArticle,
@@ -47,6 +46,7 @@ import {
   restoreArticle,
   searchArticles,
   updateArticle,
+  updateMessageStatus,
   ApiRequestError
 } from "./api";
 import type {
@@ -92,6 +92,7 @@ const trashPath = "/trash"; // Shareable path for the administrator article recy
 const searchDebounceMs = 650; // Delay before querying as the visitor types.
 const minAutoSearchLength = 2; // One-character input stays local to save Cloudflare requests.
 const guestbookCooldownKey = "guestbook:lastSentAt"; // Local storage key for client-side guest cooldown.
+const guestbookPendingKey = "guestbook:pending"; // Local storage key for visitor messages awaiting moderation.
 const passwordQueryKey = "password"; // URL query key used by password article share links.
 const untaggedArticleFilter = "__untagged__"; // Reserved API filter for articles that have no tags.
 
@@ -438,23 +439,28 @@ export function App() {
       return;
     }
 
-    const scrollElement = contentAreaRef.current; // Article column scroll container on desktop list pages.
-    if (!scrollElement) {
-      return;
-    }
-
     const handleScroll = () => {
-      const scrollBottom = scrollElement.scrollTop + scrollElement.clientHeight; // Current article column bottom.
-      const triggerLine = scrollElement.scrollHeight - 360; // Distance from bottom before loading more.
+      const scrollElement = contentAreaRef.current; // Article column scroll container on desktop list pages.
+      const usesWindowScroll = !scrollElement || scrollElement.scrollHeight <= scrollElement.clientHeight + 1;
+      const scrollTop = usesWindowScroll ? window.scrollY : scrollElement.scrollTop; // Current scroll offset.
+      const viewportHeight = usesWindowScroll ? window.innerHeight : scrollElement.clientHeight; // Visible scroll viewport.
+      const scrollHeight = usesWindowScroll ? document.documentElement.scrollHeight : scrollElement.scrollHeight; // Total scrollable height.
+      const scrollBottom = scrollTop + viewportHeight;
+      const triggerLine = scrollHeight - 360; // Distance from bottom before loading more.
 
       if (scrollBottom >= triggerLine) {
         void loadMoreArticles();
       }
     };
 
-    scrollElement.addEventListener("scroll", handleScroll, { passive: true });
+    const scrollElement = contentAreaRef.current;
+    scrollElement?.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("scroll", handleScroll, { passive: true });
     handleScroll();
-    return () => scrollElement.removeEventListener("scroll", handleScroll);
+    return () => {
+      scrollElement?.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, [hasMoreArticles, loadMoreArticles, loading, loadingMore, view]);
 
   async function refreshTagOptions() {
@@ -507,7 +513,8 @@ export function App() {
 
     const actionKey = `article-${slug}`; // Display key for this article request.
     const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
-    listScrollY.current = contentAreaRef.current?.scrollTop ?? window.scrollY;
+    const scrollElement = contentAreaRef.current;
+    listScrollY.current = scrollElement && scrollElement.scrollHeight > scrollElement.clientHeight + 1 ? scrollElement.scrollTop : window.scrollY;
     try {
       await loadArticle(slug, true);
     } finally {
@@ -628,7 +635,7 @@ export function App() {
     }
     window.requestAnimationFrame(() => {
       const scrollTop = options.restoreScroll ? listScrollY.current : 0; // Stored article-column scroll position.
-      if (contentAreaRef.current) {
+      if (contentAreaRef.current && contentAreaRef.current.scrollHeight > contentAreaRef.current.clientHeight + 1) {
         contentAreaRef.current.scrollTop = scrollTop;
       } else {
         window.scrollTo({ top: scrollTop, behavior: "auto" });
@@ -952,9 +959,15 @@ export function App() {
     }
     setGuestbookLoading(true);
     try {
-      const result = await listMessages(articleId, password);
+      const pending = readPendingGuestbookMessages(scope);
+      const pendingIds = pending.map((item) => item.message.id);
+      const result = pendingIds.length ? await listMessages(articleId, password, pendingIds) : await listMessages(articleId, password);
       if (requestId !== messageRequestIdRef.current) return;
-      setGuestbookMessages(result.messages);
+      const returnedIds = new Set(flattenGuestbookMessages(result.messages).map((item) => item.id));
+      const approvedIds = new Set(flattenGuestbookMessages(result.messages).filter((item) => item.status === "approved").map((item) => item.id));
+      writePendingGuestbookMessages(scope, readPendingGuestbookMessages(scope).filter((item) => returnedIds.has(item.message.id) && !approvedIds.has(item.message.id)));
+      const retainedIds = new Set(readPendingGuestbookMessages(scope).map((item) => item.message.id));
+      setGuestbookMessages(markLocalPendingMessages(result.messages, retainedIds));
       if (!authenticated) {
         const captchaResult = await getMessageCaptcha();
         if (requestId !== messageRequestIdRef.current) return;
@@ -1018,10 +1031,11 @@ export function App() {
         articlePassword: articleId === null ? "" : currentArticlePassword(articleId),
         captchaToken: guestbookCaptcha?.token ?? guestbookDraft.captchaToken
       };
-      await createMessage(input);
+      const created = await createMessage(input);
       if (!authenticated) {
         window.localStorage.setItem(guestbookCooldownKey, String(Date.now()));
         setGuestbookCooldown(guestbookCooldownSeconds);
+        addPendingGuestbookMessage(articleId === null ? "guestbook" : `article-${articleId}`, created.message);
       }
       setGuestbookDraft({
         ...defaultGuestbookDraft,
@@ -1074,19 +1088,16 @@ export function App() {
     }
   }
 
-  /** Approves a pending guestbook message for public display. */
-  async function approveGuestbookMessage(id: number, articleId: number | null = null) {
-    if (guestbookActionRef.current) {
-      return;
-    }
-
-    const actionKey = `approve-${id}`;
+  /** Toggles public visibility or marks a message invalid from the administrator view. */
+  async function changeGuestbookStatus(id: number, status: "pending" | "approved", invalid: boolean, articleId: number | null = null) {
+    if (guestbookActionRef.current) return;
+    const actionKey = `status-${id}`;
     guestbookActionRef.current = actionKey;
     setGuestbookAction(actionKey);
     setError("");
     try {
-      await approveMessage(id);
-      setMessage(`${articleId === null ? "留言" : "评论"}已通过审核`);
+      await updateMessageStatus(id, status, invalid);
+      setMessage(invalid ? "评论已标记为失效" : status === "approved" ? "评论已公开" : "评论已隐藏");
       await refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
     } catch (caught) {
       setError(asErrorMessage(caught));
@@ -1325,7 +1336,7 @@ export function App() {
                     setGuestbookReplyTarget(null);
                     setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null }));
                   }}
-                  onApprove={(id) => void approveGuestbookMessage(id, activeArticle.id)}
+                  onStatus={(id, status, invalid) => void changeGuestbookStatus(id, status, invalid, activeArticle.id)}
                   onDelete={(id) => void removeGuestbookMessage(id, activeArticle.id)}
                   onDraftChange={setGuestbookDraft}
                   onRefreshCaptcha={() => void refreshGuestbookCaptcha()}
@@ -1377,7 +1388,7 @@ export function App() {
                 setGuestbookReplyTarget(null);
                 setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null }));
               }}
-              onApprove={(id) => void approveGuestbookMessage(id)}
+              onStatus={(id, status, invalid) => void changeGuestbookStatus(id, status, invalid)}
               onDelete={(id) => void removeGuestbookMessage(id)}
               onDraftChange={setGuestbookDraft}
               onRefreshCaptcha={() => void refreshGuestbookCaptcha()}
@@ -1423,7 +1434,7 @@ function Guestbook(props: {
   captchaRefreshing: boolean;
   action: string;
   onCancelReply: () => void;
-  onApprove: (id: number) => void;
+  onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
   onDraftChange: (draft: GuestbookInput) => void;
   onRefreshCaptcha: () => void;
@@ -1549,7 +1560,7 @@ function Guestbook(props: {
               authenticated={props.authenticated}
               key={message.id}
               message={message}
-              onApprove={props.onApprove}
+              onStatus={props.onStatus}
               onDelete={props.onDelete}
               onReply={props.onReply}
             />
@@ -1563,22 +1574,22 @@ function GuestbookMessageItem(props: {
   action: string;
   authenticated: boolean;
   message: GuestbookMessage;
-  onApprove: (id: number) => void;
+  onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
   onReply: (message: GuestbookMessage) => void;
 }) {
-  const approveActionKey = `approve-${props.message.id}`;
   const deleteActionKey = `delete-${props.message.id}`;
-  const approving = props.action === approveActionKey;
+  const statusChanging = props.action === `status-${props.message.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
 
   return (
-    <article className="message-card">
+    <article className={props.message.invalid ? "message-card message-invalid" : "message-card"}>
       <div className="message-head">
         <div>
           <strong>{props.message.nickname}</strong>
-          {props.authenticated && props.message.status === "pending" && <span className="pending-pill">待审核</span>}
+          {props.message.invalid && <span className="invalid-pill">失效</span>}
+          {props.message.localPending && <span className="local-pending-pill">管理员未公开</span>}
           {props.authenticated && props.message.email && <span className="message-email"> {props.message.email}</span>}
           <time title={formatDate(props.message.createdAt)}>{formatDate(props.message.createdAt)}</time>
         </div>
@@ -1586,17 +1597,19 @@ function GuestbookMessageItem(props: {
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.message)}>
             回复
           </button>
-          {props.authenticated && props.message.status === "pending" && (
+          {props.authenticated && (
             <button
-              className="text-button ghost approve-action"
+              className="icon-button subtle"
               type="button"
-              onClick={() => props.onApprove(props.message.id)}
+              onClick={() => props.onStatus(props.message.id, props.message.status === "approved" ? "pending" : "approved", Boolean(props.message.invalid))}
               disabled={actionBusy}
+              aria-label={props.message.status === "approved" ? "隐藏留言" : "公开留言"}
+              title={props.message.status === "approved" ? "隐藏留言" : "公开留言"}
             >
-              {approving && <ButtonSpinner />}
-              {approving ? "通过中..." : "通过"}
+              {statusChanging ? <ButtonSpinner /> : props.message.status === "approved" ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
           )}
+          {props.authenticated && <button className="text-button ghost invalid-action" type="button" onClick={() => props.onStatus(props.message.id, props.message.status ?? "pending", !props.message.invalid)} disabled={actionBusy}>{props.message.invalid ? "恢复正常" : "失效"}</button>}
           {props.authenticated && (
             <button
               className="icon-button subtle danger-icon"
@@ -1619,7 +1632,7 @@ function GuestbookMessageItem(props: {
               authenticated={props.authenticated}
               key={reply.id}
               reply={reply}
-              onApprove={props.onApprove}
+              onStatus={props.onStatus}
               onDelete={props.onDelete}
               onReply={props.onReply}
             />
@@ -1634,22 +1647,22 @@ function GuestbookReplyItem(props: {
   action: string;
   authenticated: boolean;
   reply: GuestbookMessage;
-  onApprove: (id: number) => void;
+  onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
   onReply: (message: GuestbookMessage) => void;
 }) {
-  const approveActionKey = `approve-${props.reply.id}`;
   const deleteActionKey = `delete-${props.reply.id}`;
-  const approving = props.action === approveActionKey;
+  const statusChanging = props.action === `status-${props.reply.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
 
   return (
-    <article className="message-reply">
+    <article className={props.reply.invalid ? "message-reply message-invalid" : "message-reply"}>
       <div className="message-head">
         <div>
           <strong>{props.reply.nickname}</strong>
-          {props.authenticated && props.reply.status === "pending" && <span className="pending-pill">待审核</span>}
+          {props.reply.invalid && <span className="invalid-pill">失效</span>}
+          {props.reply.localPending && <span className="local-pending-pill">管理员未公开</span>}
           {props.authenticated && props.reply.email && <span className="message-email"> {props.reply.email}</span>}
           {props.reply.replyToNickname && <span className="reply-to">回复{props.reply.replyToNickname}：</span>}
           <time title={formatDate(props.reply.createdAt)}>{formatDate(props.reply.createdAt)}</time>
@@ -1658,17 +1671,19 @@ function GuestbookReplyItem(props: {
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.reply)}>
             回复
           </button>
-          {props.authenticated && props.reply.status === "pending" && (
+          {props.authenticated && (
             <button
-              className="text-button ghost approve-action"
+              className="icon-button subtle"
               type="button"
-              onClick={() => props.onApprove(props.reply.id)}
+              onClick={() => props.onStatus(props.reply.id, props.reply.status === "approved" ? "pending" : "approved", Boolean(props.reply.invalid))}
               disabled={actionBusy}
+              aria-label={props.reply.status === "approved" ? "隐藏回复" : "公开回复"}
+              title={props.reply.status === "approved" ? "隐藏回复" : "公开回复"}
             >
-              {approving && <ButtonSpinner />}
-              {approving ? "通过中..." : "通过"}
+              {statusChanging ? <ButtonSpinner /> : props.reply.status === "approved" ? <Eye size={16} /> : <EyeOff size={16} />}
             </button>
           )}
+          {props.authenticated && <button className="text-button ghost invalid-action" type="button" onClick={() => props.onStatus(props.reply.id, props.reply.status ?? "pending", !props.reply.invalid)} disabled={actionBusy}>{props.reply.invalid ? "恢复正常" : "失效"}</button>}
           {props.authenticated && (
             <button
               className="icon-button subtle danger-icon"
@@ -1835,6 +1850,55 @@ function ArticleList(props: {
       )}
     </>
   );
+}
+
+interface PendingGuestbookRecord {
+  scope: string;
+  message: GuestbookMessage;
+}
+
+/** Reads visitor-owned pending messages from local storage. */
+function readPendingGuestbookMessages(scope: string): PendingGuestbookRecord[] {
+  try {
+    const records = JSON.parse(window.localStorage.getItem(guestbookPendingKey) ?? "[]") as PendingGuestbookRecord[];
+    return records.filter((record) => record?.scope === scope && Number.isInteger(record.message?.id));
+  } catch {
+    return [];
+  }
+}
+
+/** Writes the retained pending-message records while preserving other scopes. */
+function writePendingGuestbookMessages(scope: string, scopeRecords: PendingGuestbookRecord[]) {
+  try {
+    const all = JSON.parse(window.localStorage.getItem(guestbookPendingKey) ?? "[]") as PendingGuestbookRecord[];
+    const other = all.filter((record) => record.scope !== scope);
+    window.localStorage.setItem(guestbookPendingKey, JSON.stringify([...other, ...scopeRecords]));
+  } catch {
+    // Local storage can be unavailable in privacy-restricted browsers.
+  }
+}
+
+/** Adds a freshly submitted visitor message to its local moderation queue. */
+function addPendingGuestbookMessage(scope: string, message: GuestbookMessage) {
+  const records = readPendingGuestbookMessages(scope).filter((record) => record.message.id !== message.id);
+  writePendingGuestbookMessages(scope, [...records, { scope, message }]);
+}
+
+/** Flattens the two-level message tree for local ID reconciliation. */
+function flattenGuestbookMessages(messages: GuestbookMessage[]) {
+  return messages.flatMap((message) => [message, ...message.replies]);
+}
+
+/** Marks rows retained locally so the visitor can see their moderation state. */
+function markLocalPendingMessages(messages: GuestbookMessage[], ids: Set<number>): GuestbookMessage[] {
+  return messages.map((message) => ({
+    ...message,
+    localPending: ids.has(message.id) && message.status === "pending",
+    replies: message.replies.map((reply) => ({
+      ...reply,
+      localPending: ids.has(reply.id) && reply.status === "pending"
+    }))
+  }));
 }
 
 function DeletedArticleList(props: {

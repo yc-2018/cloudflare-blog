@@ -159,10 +159,11 @@ export async function uploadImageFile(file: File, provider: ImageHostProvider) {
   return data;
 }
 
-export async function listMessages(articleId?: number | null, password = "") {
+export async function listMessages(articleId?: number | null, password = "", localIds: number[] = []) {
   const params = new URLSearchParams();
   if (articleId) params.set("articleId", String(articleId));
   if (password) params.set("password", password);
+  if (localIds.length) params.set("localIds", localIds.join(","));
   const query = params.toString();
   return requestJson<{ messages: GuestbookMessage[] }>(`/api/messages${query ? `?${query}` : ""}`);
 }
@@ -181,6 +182,13 @@ export async function createMessage(input: GuestbookInput) {
 export async function approveMessage(id: number) {
   return requestJson<{ message: GuestbookMessage }>(`/api/messages/${id}/approve`, {
     method: "POST"
+  });
+}
+
+export async function updateMessageStatus(id: number, status: "pending" | "approved", invalid = false) {
+  return requestJson<{ message: GuestbookMessage }>(`/api/messages/${id}/status`, {
+    method: "POST",
+    body: JSON.stringify({ status, invalid })
   });
 }
 

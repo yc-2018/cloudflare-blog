@@ -96,6 +96,8 @@ export interface GuestbookMessage {
   content: string;
   replyToNickname?: string;
   status?: "pending" | "approved";
+  invalid?: boolean;
+  localPending?: boolean;
   createdAt: string;
   replies: GuestbookMessage[];
 }

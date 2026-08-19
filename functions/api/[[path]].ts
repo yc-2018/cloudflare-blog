@@ -64,6 +64,7 @@ interface MessageRow {
   author_hash: string;
   reply_to_nickname: string;
   status: MessageStatus;
+  invalid: number;
   created_at: string;
 }
 
@@ -515,12 +516,13 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
   if (segments.length === 0 && request.method === "GET") {
     const url = new URL(request.url);
     const articleId = parseOptionalPositiveInteger(url.searchParams.get("articleId"));
+    const localIds = parseMessageIds(url.searchParams.get("localIds"));
     if (articleId !== null) {
       const article = await getArticleById(env.DB, articleId);
       if (!article) return jsonError("NOT_FOUND", "文章不存在", 404);
       await ensureArticleAccessible(request, env, article, url.searchParams.get("password") ?? "", authenticated);
     }
-    return json({ messages: await listMessages(env.DB, authenticated, articleId) });
+    return json({ messages: await listMessages(env.DB, authenticated, articleId, localIds) });
   }
 
   if (segments.length === 0 && request.method === "POST") {
@@ -570,6 +572,20 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
     return json({ message: formatMessage(message, true) });
   }
 
+  if (segments.length === 2 && segments[1] === "status" && request.method === "POST") {
+    await requireAuth(request, env);
+    const messageId = parsePositiveInteger(segments[0], 0);
+    if (!messageId) return jsonError("BAD_REQUEST", "留言 ID 不正确", 400);
+    const body = await readJson<{ status?: MessageStatus; invalid?: boolean }>(request);
+    const status = body.status;
+    if (status !== "pending" && status !== "approved") {
+      return jsonError("BAD_REQUEST", "留言状态不正确", 400);
+    }
+    const message = await setMessageStatus(env.DB, messageId, status, Boolean(body.invalid));
+    if (!message) return jsonError("NOT_FOUND", "留言不存在", 404);
+    return json({ message: formatMessage(message, true) });
+  }
+
   if (segments.length === 1 && request.method === "DELETE") {
     await requireAuth(request, env);
     const messageId = parsePositiveInteger(segments[0], 0);
@@ -589,14 +605,15 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
 }
 
 /** Returns guestbook messages as a two-level tree. */
-async function listMessages(db: D1Database, includeEmail: boolean, articleId: number | null = null) {
-  const clauses = [includeEmail ? "1 = 1" : "status = 'approved'"];
+async function listMessages(db: D1Database, includeEmail: boolean, articleId: number | null = null, localIds: number[] = []) {
+  const clauses = [includeEmail ? "1 = 1" : localIds.length ? `(status = 'approved' OR (status = 'pending' AND id IN (${localIds.map(() => "?").join(",")})))` : "status = 'approved'"];
   clauses.push(articleId === null ? "article_id IS NULL" : "article_id = ?");
-  const bindings = articleId === null ? [] : [articleId];
+  const bindings: number[] = articleId === null ? [] : [articleId];
+  if (!includeEmail) bindings.unshift(...localIds);
   const result = await db
     .prepare(
       `
-        SELECT id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, created_at
+        SELECT id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, invalid, created_at
         FROM guestbook_messages
         WHERE ${clauses.join(" AND ")}
         ORDER BY datetime(created_at) ASC, id ASC
@@ -644,23 +661,33 @@ async function createMessage(db: D1Database, input: MessageInput, authorHash: st
 
 /** Approves a pending guestbook message for public display. */
 async function approveMessage(db: D1Database, messageId: number) {
+  return setMessageStatus(db, messageId, "approved", false);
+}
+
+/** Updates a moderation status while returning the complete message row. */
+async function setMessageStatus(db: D1Database, messageId: number, status: MessageStatus, invalid: boolean) {
   return db
     .prepare(
       `
         UPDATE guestbook_messages
-        SET status = 'approved'
+        SET status = ?, invalid = ?
         WHERE id = ?
         RETURNING id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, created_at
       `
     )
-    .bind(messageId)
+    .bind(status, invalid ? 1 : 0, messageId)
     .first<MessageRow>();
+}
+
+/** Parses locally retained visitor message IDs, ignoring malformed values. */
+function parseMessageIds(value: string | null) {
+  return Array.from(new Set((value ?? "").split(",").map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))).slice(0, 50);
 }
 
 /** Finds a message row used as the direct reply target. */
 async function getMessageById(db: D1Database, messageId: number) {
   return db
-    .prepare("SELECT id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, created_at FROM guestbook_messages WHERE id = ?")
+    .prepare("SELECT id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, invalid, created_at FROM guestbook_messages WHERE id = ?")
     .bind(messageId)
     .first<MessageRow>();
 }
@@ -695,6 +722,7 @@ function formatMessage(row: MessageRow, includeEmail: boolean) {
     content: row.content,
     replyToNickname: row.reply_to_nickname || undefined,
     status: row.status,
+    invalid: Boolean(row.invalid),
     createdAt: row.created_at,
     replies: []
   };

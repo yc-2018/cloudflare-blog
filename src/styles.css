@@ -1276,6 +1276,42 @@ button {
   padding: 14px 16px 16px;
 }
 
+.invalid-pill,
+.local-pending-pill {
+  display: inline-flex;
+  margin-left: 8px;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.invalid-pill {
+  border: 1px solid #c8cbc6;
+  background: #eceeeb;
+  color: #697069;
+}
+
+.local-pending-pill {
+  border: 1px solid #d7e0ed;
+  background: #f0f5fb;
+  color: #536b86;
+}
+
+.message-invalid {
+  border-color: #d1d4cf;
+  background: #f0f1ef;
+}
+
+.message-invalid .message-content,
+.message-invalid .message-head strong {
+  color: #7b817a;
+}
+
+.invalid-action {
+  color: #7f3c3c;
+}
+
 .content-field {
   display: grid;
   gap: 7px;
@@ -1635,6 +1671,11 @@ textarea {
     padding-top: 20px;
   }
 
+  .layout:not(.layout-detail) {
+    height: auto;
+    overflow: visible;
+  }
+
   .layout.layout-editor {
     width: min(100% - 28px, 680px);
   }
@@ -1735,7 +1776,9 @@ textarea {
   }
 
   .row-actions {
-    justify-content: space-between;
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+    flex-wrap: nowrap;
   }
 
   .guestbook-fields {
