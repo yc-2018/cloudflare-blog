@@ -1,4 +1,7 @@
+// @vitest-environment jsdom
+
 import { renderToStaticMarkup } from "react-dom/server";
+import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { MarkdownRenderer } from "./App";
 
@@ -73,5 +76,70 @@ describe("MarkdownRenderer", () => {
     expect(html).toContain(
       '<a href="https://example.org/path" target="_blank" rel="noopener noreferrer">https://example.org/path</a>'
     );
+  });
+
+  it("opens Markdown images in a lightbox and closes it from the backdrop", () => {
+    const view = render(<MarkdownRenderer content={'![架构图](https://example.com/diagram.png)'} />);
+    const imageTrigger = view.getByRole("button", { name: "放大查看图片：架构图" });
+
+    fireEvent.click(imageTrigger);
+
+    const dialog = view.getByRole("dialog", { name: "图片预览" });
+    expect(dialog).toBeTruthy();
+    expect(within(dialog).getByRole("img", { name: "架构图" }).getAttribute("src")).toBe(
+      "https://example.com/diagram.png"
+    );
+
+    fireEvent.click(view.getByRole("dialog", { name: "图片预览" }));
+
+    expect(view.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+    view.unmount();
+  });
+
+  it("closes the image lightbox with Escape", () => {
+    const view = render(<MarkdownRenderer content={'![截图](https://example.com/screenshot.png)'} />);
+
+    fireEvent.click(view.getByRole("button", { name: "放大查看图片：截图" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(view.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+    view.unmount();
+  });
+
+  it("zooms the lightbox image with the mouse wheel", () => {
+    const view = render(<MarkdownRenderer content={'![放大测试](https://example.com/zoom.png)'} />);
+
+    fireEvent.click(view.getByRole("button", { name: "放大查看图片：放大测试" }));
+    const dialog = view.getByRole("dialog", { name: "图片预览" });
+    const image = within(dialog).getByRole("img", { name: "放大测试" });
+
+    fireEvent.wheel(dialog, { deltaY: -500 });
+
+    expect(image.getAttribute("style")).toContain("scale(1.5)");
+    expect(within(dialog).getByText("滚动缩放 · 150%")).toBeTruthy();
+    view.unmount();
+  });
+
+  it("drags a zoomed image and closes it when clicked without dragging", () => {
+    const view = render(<MarkdownRenderer content={'![拖拽测试](https://example.com/drag.png)'} />);
+
+    fireEvent.click(view.getByRole("button", { name: "放大查看图片：拖拽测试" }));
+    const dialog = view.getByRole("dialog", { name: "图片预览" });
+    const image = within(dialog).getByRole("img", { name: "拖拽测试" });
+    fireEvent.wheel(dialog, { deltaY: -500 });
+    expect(image.getAttribute("draggable")).toBe("false");
+
+    fireEvent.pointerDown(image, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 100, clientY: 100 });
+    fireEvent.pointerMove(image, { pointerId: 1, clientX: 160, clientY: 130 });
+    fireEvent.pointerUp(image, { pointerId: 1, clientX: 160, clientY: 130 });
+    fireEvent.click(image);
+
+    expect(view.getByRole("dialog", { name: "图片预览" })).toBeTruthy();
+    expect(image.getAttribute("style")).toContain("translate(60px, 30px)");
+
+    fireEvent.click(image);
+
+    expect(view.queryByRole("dialog", { name: "图片预览" })).toBeNull();
+    view.unmount();
   });
 });

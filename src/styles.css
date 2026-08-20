@@ -1054,9 +1054,103 @@ button {
   font-size: 16px;
 }
 
+.markdown-image-trigger {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  cursor: zoom-in;
+  border-radius: 8px;
+  outline: 0;
+}
+
+.markdown-image-trigger:focus-visible {
+  box-shadow: 0 0 0 3px rgb(78 120 89 / 35%);
+}
+
+.markdown-image-trigger img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+
+.markdown-image-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  overflow: hidden;
+  background: rgb(7 10 15 / 88%);
+  cursor: zoom-out;
+  overscroll-behavior: contain;
+}
+
+.markdown-image-lightbox-stage {
+  display: grid;
+  min-width: 100%;
+  min-height: 100%;
+  place-items: center;
+  padding: 56px 24px 24px;
+}
+
+.markdown-image-lightbox-image {
+  display: block;
+  max-width: min(96vw, 1600px);
+  max-height: calc(100vh - 80px);
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 24px 80px rgb(0 0 0 / 42%);
+  cursor: grab;
+  transform-origin: center;
+  touch-action: none;
+  user-select: none;
+  will-change: transform;
+}
+
+.markdown-image-lightbox-hint {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: rgb(17 24 39 / 62%);
+  color: rgb(255 255 255 / 82%);
+  font-size: 12px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.markdown-image-lightbox-close {
+  position: absolute;
+  top: 16px;
+  right: 18px;
+  z-index: 2;
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 28%);
+  border-radius: 999px;
+  background: rgb(17 24 39 / 55%);
+  color: #fff;
+}
+
+.markdown-image-lightbox-close:hover,
+.markdown-image-lightbox-close:focus-visible {
+  background: rgb(255 255 255 / 18%);
+}
+
 .markdown-body h1,
 .markdown-body h2 {
   border-bottom: 0;
+}
+
+.markdown-body em,
+.markdown-body i {
+  display: inline-block;
+  font-style: italic;
+  transform: skewX(-30deg);
+  transform-origin: center;
 }
 
 .markdown-body mark {

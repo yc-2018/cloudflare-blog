@@ -67,6 +67,7 @@ import {
   emptyArticleInput,
   formatArticleTimeTitle,
   formatDate,
+  formatDateTime,
   sampleMarkdown
 } from "./utils";
 import {
@@ -97,6 +98,10 @@ const guestbookCooldownKey = "guestbook:lastSentAt"; // Local storage key for cl
 const guestbookPendingKey = "guestbook:pending"; // Local storage key for visitor messages awaiting moderation.
 const passwordQueryKey = "password"; // URL query key used by password article share links.
 const untaggedArticleFilter = "__untagged__"; // Reserved API filter for articles that have no tags.
+const minLightboxScale = 0.5; // Smallest image scale allowed in the lightbox.
+const maxLightboxScale = 4; // Largest image scale allowed in the lightbox.
+const lightboxScaleStep = 0.001; // Scale change applied to each wheel delta unit.
+const lightboxDragThreshold = 4; // Pointer movement in pixels required before a click becomes a drag.
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -1614,7 +1619,9 @@ function GuestbookMessageItem(props: {
           {props.message.invalid && <span className="invalid-pill">失效</span>}
           {props.message.localPending && <span className="local-pending-pill">管理员未公开</span>}
           {props.authenticated && props.message.email && <span className="message-email"> {props.message.email}</span>}
-          <time title={formatDate(props.message.createdAt)}>{formatDate(props.message.createdAt)}</time>
+          <time dateTime={props.message.createdAt} title={formatDateTime(props.message.createdAt)}>
+            {formatDateTime(props.message.createdAt)}
+          </time>
         </div>
         <div className="message-actions">
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.message)}>
@@ -1688,7 +1695,9 @@ function GuestbookReplyItem(props: {
           {props.reply.localPending && <span className="local-pending-pill">管理员未公开</span>}
           {props.authenticated && props.reply.email && <span className="message-email"> {props.reply.email}</span>}
           {props.reply.replyToNickname && <span className="reply-to">回复{props.reply.replyToNickname}：</span>}
-          <time title={formatDate(props.reply.createdAt)}>{formatDate(props.reply.createdAt)}</time>
+          <time dateTime={props.reply.createdAt} title={formatDateTime(props.reply.createdAt)}>
+            {formatDateTime(props.reply.createdAt)}
+          </time>
         </div>
         <div className="message-actions">
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.reply)}>
@@ -2148,21 +2157,240 @@ function ArticleView(props: {
 }
 
 export function MarkdownRenderer(props: { content: string }) {
+  const [lightboxImage, setLightboxImage] = useState<MarkdownImageData | null>(null); // Currently enlarged Markdown image.
+  const [lightboxScale, setLightboxScale] = useState(1); // Current lightbox image scale.
+  const [lightboxOffset, setLightboxOffset] = useState({ x: 0, y: 0 }); // Current image drag offset.
+  const lightboxDragRef = useRef<LightboxDragState | null>(null); // Active pointer drag state.
+  const suppressLightboxClickRef = useRef(false); // Prevents a drag release from closing the image.
+
+  /** Opens a Markdown image and resets its zoom level. */
+  const openLightboxImage = useCallback((image: MarkdownImageData) => {
+    setLightboxImage(image);
+    setLightboxScale(1);
+    setLightboxOffset({ x: 0, y: 0 });
+    suppressLightboxClickRef.current = false;
+  }, []);
+
+  /** Closes the lightbox and restores its default zoom level. */
+  const closeLightbox = useCallback(() => {
+    setLightboxImage(null);
+    setLightboxScale(1);
+    setLightboxOffset({ x: 0, y: 0 });
+    lightboxDragRef.current = null;
+    suppressLightboxClickRef.current = false;
+  }, []);
+
+  /** Applies mouse-wheel zoom while keeping the image scale within safe bounds. */
+  const handleLightboxWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const nextScale = Math.min(maxLightboxScale, Math.max(minLightboxScale, lightboxScale - event.deltaY * lightboxScaleStep)); // Scale after this wheel event.
+    setLightboxScale(nextScale);
+    if (nextScale <= 1) {
+      setLightboxOffset({ x: 0, y: 0 });
+    }
+  }, [lightboxScale]);
+
+  /** Starts dragging the enlarged image when it is zoomed beyond its base size. */
+  const handleLightboxPointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    if (lightboxScale <= 1 || (event.pointerType === "mouse" && event.button !== 0)) {
+      return;
+    }
+
+    lightboxDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: lightboxOffset.x,
+      originY: lightboxOffset.y,
+      moved: false
+    };
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  }, [lightboxOffset.x, lightboxOffset.y, lightboxScale]);
+
+  /** Moves the enlarged image while the pointer is held down. */
+  const handleLightboxPointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const drag = lightboxDragRef.current; // Current pointer drag state.
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const deltaX = event.clientX - drag.startX; // Horizontal pointer movement.
+    const deltaY = event.clientY - drag.startY; // Vertical pointer movement.
+    if (!drag.moved && Math.hypot(deltaX, deltaY) < lightboxDragThreshold) {
+      return;
+    }
+
+    drag.moved = true;
+    setLightboxOffset({ x: drag.originX + deltaX, y: drag.originY + deltaY });
+  }, []);
+
+  /** Ends an image drag and suppresses the synthetic click generated after movement. */
+  const handleLightboxPointerUp = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
+    const drag = lightboxDragRef.current; // Current pointer drag state.
+    if (!drag || drag.pointerId !== event.pointerId) {
+      return;
+    }
+
+    lightboxDragRef.current = null;
+    if (typeof event.currentTarget.hasPointerCapture === "function" && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    suppressLightboxClickRef.current = drag.moved;
+  }, []);
+
+  /** Closes on a simple image click while preserving a completed drag. */
+  const handleLightboxImageClick = useCallback((event: React.MouseEvent<HTMLImageElement>) => {
+    event.stopPropagation();
+    if (suppressLightboxClickRef.current) {
+      suppressLightboxClickRef.current = false;
+      return;
+    }
+
+    closeLightbox();
+  }, [closeLightbox]);
+
+  useEffect(() => {
+    if (!lightboxImage) {
+      return;
+    }
+
+    const previousBodyOverflow = document.body.style.overflow; // Body overflow value restored after closing the preview.
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        closeLightbox();
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [closeLightbox, lightboxImage]);
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkHighlightMark, remarkHighlightMarkElement]}
-      rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], [rehypeHighlight, { detect: true }]]}
-      components={{
-        a: ({ children, node: _node, ...anchorProps }) => (
-          <a {...anchorProps} target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
-        pre: ({ children }) => <CodeBlock>{children}</CodeBlock>
+    <>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkHighlightMark, remarkHighlightMarkElement]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], [rehypeHighlight, { detect: true }]]}
+        components={{
+          a: ({ children, node: _node, ...anchorProps }) => (
+            <a {...anchorProps} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          ),
+          img: ({ node: _node, ...imageProps }) => <MarkdownImage {...imageProps} onOpen={openLightboxImage} />,
+          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>
+        }}
+      >
+        {props.content}
+      </ReactMarkdown>
+      {lightboxImage && (
+        <div
+          className="markdown-image-lightbox"
+          role="dialog"
+          aria-modal="true"
+          aria-label="图片预览"
+          onClick={closeLightbox}
+          onWheel={handleLightboxWheel}
+        >
+          <button
+            className="markdown-image-lightbox-close"
+            type="button"
+            aria-label="关闭图片预览"
+            onClick={closeLightbox}
+          >
+            <X size={22} />
+          </button>
+          <div className="markdown-image-lightbox-stage" onClick={closeLightbox}>
+            <img
+              className="markdown-image-lightbox-image"
+              src={lightboxImage.src}
+              alt={lightboxImage.alt}
+              draggable={false}
+              style={{ transform: `translate(${lightboxOffset.x}px, ${lightboxOffset.y}px) scale(${lightboxScale})` }}
+              onClick={handleLightboxImageClick}
+              onDragStart={(event) => event.preventDefault()}
+              onPointerDown={(event) => {
+                event.preventDefault();
+                handleLightboxPointerDown(event);
+              }}
+              onPointerMove={(event) => {
+                event.preventDefault();
+                handleLightboxPointerMove(event);
+              }}
+              onPointerUp={handleLightboxPointerUp}
+              onPointerCancel={handleLightboxPointerUp}
+            />
+          </div>
+          <span className="markdown-image-lightbox-hint" aria-live="polite">
+            滚动缩放 · {Math.round(lightboxScale * 100)}%
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
+interface MarkdownImageData {
+  src: string;
+  alt: string;
+}
+
+interface LightboxDragState {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  moved: boolean;
+}
+
+interface MarkdownImageProps {
+  alt?: string;
+  src?: string;
+  title?: string;
+  onOpen: (image: MarkdownImageData) => void;
+}
+
+/** Renders a Markdown image that can be opened in an accessible full-screen preview. */
+function MarkdownImage(props: MarkdownImageProps) {
+  const alt = props.alt ?? ""; // Alternative text shown when the image cannot load.
+  const src = props.src ?? ""; // Source URL for the Markdown image.
+
+  if (!src) {
+    return <img alt={alt} title={props.title} />;
+  }
+
+  /** Opens this image in the parent Markdown lightbox. */
+  function openImage() {
+    props.onOpen({ src, alt });
+  }
+
+  return (
+    <span
+      className="markdown-image-trigger"
+      role="button"
+      tabIndex={0}
+      aria-label={`放大查看图片：${alt || "图片"}`}
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        openImage();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          event.stopPropagation();
+          openImage();
+        }
       }}
     >
-      {props.content}
-    </ReactMarkdown>
+      <img src={src} alt={alt} title={props.title} />
+    </span>
   );
 }
 
