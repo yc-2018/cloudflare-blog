@@ -36,13 +36,15 @@ describe("api helpers", () => {
         access_password: "",
         view_count: 7,
         created_at: "2026-07-22 08:00:00",
-        updated_at: "2026-07-22 08:00:00"
+        updated_at: "2026-07-22 08:00:00",
+        pinned_at: "2026-07-23T08:00:00.000Z"
       },
       []
     );
 
     expect(article.viewCount).toBe(7);
     expect(article.id).toBe(1);
+    expect(article.pinnedAt).toBe("2026-07-23T08:00:00.000Z");
     expect(JSON.stringify(article)).not.toMatch(/ipAddress|userAgent|visitorHash/);
   });
 

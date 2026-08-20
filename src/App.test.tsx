@@ -23,6 +23,7 @@ const api = vi.hoisted(() => ({
   permanentlyDeleteArticle: vi.fn(),
   restoreArticle: vi.fn(),
   searchArticles: vi.fn(),
+  toggleArticlePinned: vi.fn(),
   updateArticle: vi.fn(),
   uploadImageFile: vi.fn(),
   ApiRequestError: class ApiRequestError extends Error {

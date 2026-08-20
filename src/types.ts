@@ -24,6 +24,7 @@ export interface ArticleSummary {
   viewCount: number;
   createdAt: string;
   updatedAt: string;
+  pinnedAt?: string | null;
   deletedAt?: string | null;
   tags: Tag[];
 }

@@ -20,6 +20,7 @@ import {
   Copy,
   Check,
   Plus,
+  Pin,
   Search,
   Share2,
   TagIcon,
@@ -45,6 +46,7 @@ import {
   permanentlyDeleteArticle,
   restoreArticle,
   searchArticles,
+  toggleArticlePinned,
   updateArticle,
   updateMessageStatus,
   ApiRequestError
@@ -165,6 +167,7 @@ export function App() {
   const [articleSubmitting, setArticleSubmitting] = useState(false);
   const [articleDeleting, setArticleDeleting] = useState(false);
   const [articleDeletingSlug, setArticleDeletingSlug] = useState("");
+  const [articlePinningSlug, setArticlePinningSlug] = useState("");
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashLoadingMore, setTrashLoadingMore] = useState(false);
   const [trashArticleAction, setTrashArticleAction] = useState("");
@@ -911,6 +914,24 @@ export function App() {
     }
   }
 
+  /** Toggles an article's pinned state and refreshes the current list ordering. */
+  async function changeArticlePinned(slug: string, pinned: boolean) {
+    if (articlePinningSlug) {
+      return;
+    }
+    setArticlePinningSlug(slug);
+    setError("");
+    try {
+      await toggleArticlePinned(slug, pinned);
+      setMessage(pinned ? "文章已置顶" : "文章已取消置顶");
+      await refreshContent();
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      setArticlePinningSlug("");
+    }
+  }
+
   async function handleLogin(username: string, password: string) {
     setError("");
     await login(username, password);
@@ -1279,9 +1300,11 @@ export function App() {
               editingSlug={editingArticleSlug}
               openingSlug={routeAction.startsWith("article-") ? routeAction.slice("article-".length) : ""}
               deletingSlug={articleDeletingSlug}
+              pinningSlug={articlePinningSlug}
               onOpen={openArticle}
               onEdit={editArticle}
               onDelete={removeArticle}
+              onTogglePinned={changeArticlePinned}
             />
           )}
 
@@ -1749,9 +1772,11 @@ function ArticleList(props: {
   editingSlug: string;
   openingSlug: string;
   deletingSlug: string;
+  pinningSlug: string;
   onOpen: (slug: string) => void;
   onEdit: (slug: string) => void;
   onDelete: (slug: string) => void;
+  onTogglePinned: (slug: string, pinned: boolean) => void;
 }) {
   const hasSearch = props.search.trim().length > 0;
   if (props.loading && !props.openingSlug && !props.editingSlug) {
@@ -1792,7 +1817,10 @@ function ArticleList(props: {
               </button>
             )}
             <button className="article-main" type="button" onClick={() => props.onOpen(article.slug)} disabled={Boolean(props.openingSlug)}>
-              <h2>{article.title}</h2>
+              <h2>
+                {article.pinnedAt && <span className="article-pin-badge"><Pin size={14} />置顶</span>}
+                {article.title}
+              </h2>
               {article.excerpt && <p>{article.excerpt}</p>}
               {article.searchSnippet && (
                 <p className="search-snippet">
@@ -1818,9 +1846,19 @@ function ArticleList(props: {
                   <button
                     className="icon-button subtle"
                     type="button"
+                    onClick={() => props.onTogglePinned(article.slug, !article.pinnedAt)}
+                    aria-label={article.pinnedAt ? "取消置顶文章" : "置顶文章"}
+                    title={article.pinnedAt ? "取消置顶" : "置顶"}
+                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug || props.pinningSlug)}
+                  >
+                    {props.pinningSlug === article.slug ? <ButtonSpinner /> : <Pin size={16} fill={article.pinnedAt ? "currentColor" : "none"} />}
+                  </button>
+                  <button
+                    className="icon-button subtle"
+                    type="button"
                     onClick={() => props.onEdit(article.slug)}
                     aria-label="编辑文章"
-                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug)}
+                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug || props.pinningSlug)}
                   >
                     {props.editingSlug === article.slug ? <ButtonSpinner /> : <FilePenLine size={16} />}
                   </button>
@@ -1829,7 +1867,7 @@ function ArticleList(props: {
                     type="button"
                     onClick={() => props.onDelete(article.slug)}
                     aria-label="删除文章"
-                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug)}
+                    disabled={Boolean(props.editingSlug || props.openingSlug || props.deletingSlug || props.pinningSlug)}
                   >
                     {props.deletingSlug === article.slug ? <ButtonSpinner /> : <Trash2 size={16} />}
                   </button>

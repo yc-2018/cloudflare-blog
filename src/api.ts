@@ -124,6 +124,14 @@ export async function deleteArticle(slug: string) {
   });
 }
 
+/** Toggles whether an article is pinned in the public article list. */
+export async function toggleArticlePinned(slug: string, pinned: boolean) {
+  return requestJson<{ article: Article }>(`/api/articles/${encodeURIComponent(slug)}/pin`, {
+    method: "POST",
+    body: JSON.stringify({ pinned })
+  });
+}
+
 export async function listDeletedArticles(params: { page?: number; search?: string } = {}) {
   const searchParams = new URLSearchParams({ deleted: "1" });
   if (params.page) searchParams.set("page", String(params.page));

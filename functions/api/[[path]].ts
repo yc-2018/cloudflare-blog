@@ -29,6 +29,7 @@ interface ArticleRow {
   view_count: number;
   created_at: string;
   updated_at: string;
+  pinned_at?: string | null;
   deleted_at?: string | null;
 }
 
@@ -406,6 +407,26 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
     return json({ ok: true });
   }
 
+  if (segments.length === 2 && segments[1] === "pin" && request.method === "POST") {
+    await requireAuth(request, env);
+    const body = await readJson<{ pinned?: boolean }>(request);
+    if (typeof body.pinned !== "boolean") {
+      return jsonError("BAD_REQUEST", "置顶状态不正确", 400);
+    }
+    const result = await env.DB
+      .prepare("UPDATE articles SET pinned_at = ? WHERE slug = ? AND deleted_at IS NULL")
+      .bind(body.pinned ? new Date().toISOString() : null, slug)
+      .run();
+    if (!result.meta.changes) {
+      return jsonError("NOT_FOUND", "文章不存在", 404);
+    }
+    const article = await getArticleBySlug(env.DB, slug);
+    if (!article) {
+      return jsonError("NOT_FOUND", "文章不存在", 404);
+    }
+    return json({ article: await articleWithTags(env.DB, article, true, true) });
+  }
+
   if (request.method === "GET") {
     const includeDeleted = new URL(request.url).searchParams.get("deleted") === "1"; // Whether an administrator is opening a recycled article.
     if (includeDeleted) {
@@ -772,12 +793,12 @@ async function listArticles(
     ${where}
   `;
   const query = `
-    SELECT a.id, a.slug, a.title, a.excerpt, a.cover_image_url, a.content_md, a.visibility, a.access_password, a.view_count, a.created_at, a.updated_at, a.deleted_at
+    SELECT a.id, a.slug, a.title, a.excerpt, a.cover_image_url, a.content_md, a.visibility, a.access_password, a.view_count, a.created_at, a.updated_at, a.pinned_at, a.deleted_at
     FROM articles a
     ${joinTag}
     ${where}
     GROUP BY a.id
-    ORDER BY datetime(a.updated_at) DESC
+    ORDER BY CASE WHEN a.pinned_at IS NULL THEN 1 ELSE 0 END, datetime(a.pinned_at) DESC, datetime(a.updated_at) DESC
     LIMIT ? OFFSET ?
   `;
 
@@ -888,7 +909,7 @@ async function createArticle(db: D1Database, input: ArticleInput) {
       `
         INSERT INTO articles (slug, title, excerpt, cover_image_url, content_md, visibility, access_password)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-        RETURNING id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at
+        RETURNING id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, pinned_at
       `
     )
     .bind(slug, input.title, input.excerpt ?? "", input.coverImageUrl ?? "", input.content, storedVisibility(input.visibility), input.accessPassword ?? "")
@@ -915,7 +936,7 @@ async function updateArticle(db: D1Database, slug: string, input: ArticleInput) 
         UPDATE articles
         SET title = ?, excerpt = ?, cover_image_url = ?, content_md = ?, visibility = ?, access_password = ?, updated_at = datetime('now')
         WHERE slug = ?
-        RETURNING id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at
+        RETURNING id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, pinned_at
       `
     )
     .bind(input.title, input.excerpt ?? "", input.coverImageUrl ?? "", input.content, storedVisibility(input.visibility), input.accessPassword ?? "", slug)
@@ -998,6 +1019,7 @@ export function formatArticleResponse(
     viewCount: Number(row.view_count ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    pinnedAt: row.pinned_at ?? null,
     deletedAt: row.deleted_at ?? null,
     tags
   };
@@ -1007,7 +1029,7 @@ async function getArticleBySlug(db: D1Database, slug: string, includeDeleted = f
   return db
     .prepare(
       `
-        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, deleted_at
+        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, pinned_at, deleted_at
         FROM articles
         WHERE slug = ?
         ${includeDeleted ? "" : "AND deleted_at IS NULL"}
@@ -1147,7 +1169,7 @@ async function getArticleById(db: D1Database, articleId: number) {
   return db
     .prepare(
       `
-        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at
+        SELECT id, slug, title, excerpt, cover_image_url, content_md, visibility, access_password, view_count, created_at, updated_at, pinned_at
         FROM articles
         WHERE id = ?
       `
