@@ -908,6 +908,70 @@ button {
   overflow-wrap: anywhere;
 }
 
+.message-content p {
+  margin: 0;
+}
+
+.message-content p + p {
+  margin-top: 10px;
+}
+
+.message-content a {
+  color: #315f9a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.message-content blockquote {
+  margin: 10px 0;
+  border-left: 3px solid #d5d9d2;
+  padding-left: 12px;
+  color: #687069;
+}
+
+.message-content ul,
+.message-content ol {
+  margin: 10px 0;
+  padding-left: 24px;
+}
+
+.message-content li + li {
+  margin-top: 4px;
+}
+
+.message-content code {
+  border-radius: 4px;
+  padding: 2px 5px;
+  background: #eef1ed;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+.message-content pre {
+  max-width: 100%;
+  margin: 10px 0;
+  overflow-x: auto;
+  border-radius: 6px;
+  padding: 12px;
+  background: #eef1ed;
+  white-space: pre;
+}
+
+.message-content pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.comment-image {
+  display: block;
+  width: auto;
+  max-width: min(100%, 720px);
+  max-height: 480px;
+  margin: 10px 0;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
 .message-replies {
   display: grid;
   gap: 10px;
@@ -1930,8 +1994,22 @@ textarea {
 }
 
 @media (max-width: 520px) {
-  .top-actions .text-button {
-    padding: 0 10px;
+  .top-actions .guestbook-nav-button,
+  .top-actions .logout-nav-button {
+    width: 38px;
+    min-width: 38px;
+    padding: 0;
+  }
+
+  .top-actions .guestbook-nav-button .button-label,
+  .top-actions .logout-nav-button .button-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
 
   .brand-mark {

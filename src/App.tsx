@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -98,6 +98,7 @@ const guestbookCooldownKey = "guestbook:lastSentAt"; // Local storage key for cl
 const guestbookPendingKey = "guestbook:pending"; // Local storage key for visitor messages awaiting moderation.
 const passwordQueryKey = "password"; // URL query key used by password article share links.
 const untaggedArticleFilter = "__untagged__"; // Reserved API filter for articles that have no tags.
+const adminDefaultNickname = "仰晨"; // Initial nickname shown to administrators when writing messages.
 const minLightboxScale = 0.5; // Smallest image scale allowed in the lightbox.
 const maxLightboxScale = 4; // Largest image scale allowed in the lightbox.
 const lightboxScaleStep = 0.001; // Scale change applied to each wheel delta unit.
@@ -109,6 +110,21 @@ const markdownSanitizeSchema: RehypeSanitizeOptions = {
     new Set([...(defaultSchema.tagNames ?? []), "abbr", "figcaption", "figure", "kbd", "mark", "small", "u"])
   )
 };
+const commentMarkdownElements = [
+  "p",
+  "a",
+  "strong",
+  "em",
+  "del",
+  "code",
+  "pre",
+  "blockquote",
+  "ul",
+  "ol",
+  "li",
+  "img",
+  "br"
+]; // Lightweight Markdown elements allowed in public comments and replies.
 const guestbookCooldownSeconds = 120; // Seconds a guest must wait before sending again.
 const defaultGuestbookDraft: GuestbookInput = {
   nickname: "",
@@ -957,6 +973,7 @@ export function App() {
     try {
       await logout();
       setAuthenticated(false);
+      setGuestbookDraft(defaultGuestbookDraft);
       setActiveArticle(null);
       setEditingSlug(null);
       setDeletedArticles([]);
@@ -1001,7 +1018,13 @@ export function App() {
         setGuestbookDraft((currentDraft) => ({ ...currentDraft, captchaToken: captchaResult.captcha.token, captchaAnswer: "" }));
       } else {
         setGuestbookCaptcha(null);
-        setGuestbookDraft((currentDraft) => ({ ...currentDraft, nickname: "仰晨", email: "", captchaToken: "", captchaAnswer: "" }));
+        setGuestbookDraft((currentDraft) => ({
+          ...currentDraft,
+          nickname: currentDraft.nickname || adminDefaultNickname,
+          email: "",
+          captchaToken: "",
+          captchaAnswer: ""
+        }));
       }
     } catch (caught) {
       if (requestId !== messageRequestIdRef.current) return;
@@ -1051,7 +1074,7 @@ export function App() {
     try {
       const input = {
         ...guestbookDraft,
-        nickname: authenticated ? "仰晨" : guestbookDraft.nickname,
+        nickname: guestbookDraft.nickname,
         parentId: guestbookReplyTarget?.id ?? null,
         articleId,
         articlePassword: articleId === null ? "" : currentArticlePassword(articleId),
@@ -1065,7 +1088,7 @@ export function App() {
       }
       setGuestbookDraft({
         ...defaultGuestbookDraft,
-        nickname: authenticated ? "仰晨" : guestbookDraft.nickname,
+        nickname: guestbookDraft.nickname,
         email: authenticated ? "" : guestbookDraft.email
       });
       setGuestbookReplyTarget(null);
@@ -1163,9 +1186,15 @@ export function App() {
               统计
             </button>
           )}
-          <button className="text-button" type="button" onClick={() => void showGuestbook()} disabled={Boolean(routeAction)}>
+          <button
+            className="text-button guestbook-nav-button"
+            type="button"
+            onClick={() => void showGuestbook()}
+            disabled={Boolean(routeAction)}
+            title="留言板"
+          >
             {routeAction === "guestbook" ? <ButtonSpinner /> : <MessageSquareText size={16} />}
-            {routeAction === "guestbook" ? "打开中..." : "留言板"}
+            <span className="button-label">{routeAction === "guestbook" ? "打开中..." : "留言板"}</span>
           </button>
           {authenticated && view !== "editor" && (
             <button
@@ -1180,9 +1209,16 @@ export function App() {
             </button>
           )}
           {authenticated ? (
-            <button className="text-button" type="button" onClick={handleLogout} disabled={authAction === "logout"}>
+            <button
+              className="text-button logout-nav-button"
+              type="button"
+              onClick={handleLogout}
+              disabled={authAction === "logout"}
+              aria-label={authAction === "logout" ? "退出登录中" : "退出登录"}
+              title="退出登录"
+            >
               {authAction === "logout" ? <ButtonSpinner /> : <LogOut size={16} />}
-              {authAction === "logout" ? "退出中..." : "退出"}
+              <span className="button-label">{authAction === "logout" ? "退出中..." : "退出"}</span>
             </button>
           ) : (
             <button className="text-button" type="button" onClick={() => setLoginOpen(true)}>
@@ -1510,9 +1546,8 @@ function Guestbook(props: {
               <input
                 required
                 maxLength={10}
-                value={props.authenticated ? "仰晨" : props.draft.nickname}
+                value={props.draft.nickname}
                 onChange={(event) => setDraftField("nickname", event.target.value)}
-                disabled={props.authenticated}
                 placeholder="最多 10 个字"
               />
             </label>
@@ -1653,7 +1688,7 @@ function GuestbookMessageItem(props: {
           )}
         </div>
       </div>
-      <p className="message-content">{props.message.content}</p>
+      <CommentContent content={props.message.content} />
       {props.message.replies.length > 0 && (
         <div className="message-replies">
           {props.message.replies.map((reply) => (
@@ -1729,8 +1764,48 @@ function GuestbookReplyItem(props: {
           )}
         </div>
       </div>
-      <p className="message-content">{props.reply.content}</p>
+      <CommentContent content={props.reply.content} />
     </article>
+  );
+}
+
+/** Renders lightweight comment Markdown while rejecting HTML, headings, tables, and unsafe images. */
+export function CommentContent(props: { content: string }) {
+  /** Restricts images to HTTPS while applying the Markdown library's safe link protocol filter. */
+  function transformCommentUrl(url: string, key: string) {
+    if (key === "href") {
+      return defaultUrlTransform(url);
+    }
+
+    if (key !== "src") {
+      return "";
+    }
+
+    try {
+      return new URL(url).protocol === "https:" ? url : "";
+    } catch {
+      return "";
+    }
+  }
+
+  return (
+    <div className="message-content">
+      <ReactMarkdown
+        allowedElements={commentMarkdownElements}
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        unwrapDisallowed
+        urlTransform={transformCommentUrl}
+        components={{
+          a: ({ node: _node, ...linkProps }) => <a {...linkProps} target="_blank" rel="noopener noreferrer" />,
+          img: ({ node: _node, ...imageProps }) => (
+            <img {...imageProps} className="comment-image" loading="lazy" referrerPolicy="no-referrer" />
+          )
+        }}
+      >
+        {props.content}
+      </ReactMarkdown>
+    </div>
   );
 }
 

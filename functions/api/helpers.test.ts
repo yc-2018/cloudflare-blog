@@ -147,13 +147,14 @@ describe("api helpers", () => {
     expect(() => validateMessageInput({ nickname: "访客", content: "你好", captchaToken: "t", captchaAnswer: "1" }, false)).toThrow();
   });
 
-  it("lets administrators skip email and captcha while using the default nickname", () => {
-    expect(validateMessageInput({ nickname: "", email: "", content: "管理员回复", articleId: 12 }, true)).toMatchObject({
-      nickname: "仰晨",
+  it("lets administrators choose a nickname while skipping email and captcha", () => {
+    expect(validateMessageInput({ nickname: "站长", email: "", content: "管理员回复", articleId: 12 }, true)).toMatchObject({
+      nickname: "站长",
       email: "",
       content: "管理员回复",
       articleId: 12
     });
+    expect(() => validateMessageInput({ nickname: "", content: "评论" }, true)).toThrow();
     expect(() => validateMessageInput({ nickname: "", content: "评论", articleId: -1 }, true)).toThrow();
   });
 

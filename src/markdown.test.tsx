@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { MarkdownRenderer } from "./App";
+import { CommentContent, MarkdownRenderer } from "./App";
 
 describe("MarkdownRenderer", () => {
   it("renders double equals text as a highlighted mark and preserves kbd tags", () => {
@@ -141,5 +141,48 @@ describe("MarkdownRenderer", () => {
 
     expect(view.queryByRole("dialog", { name: "图片预览" })).toBeNull();
     view.unmount();
+  });
+});
+
+describe("CommentContent", () => {
+  it("renders lightweight Markdown without enabling headings or tables", () => {
+    const html = renderToStaticMarkup(
+      <CommentContent
+        content={'# 标题\n\n**加粗**、*斜体*、~~删除~~、`代码`\n\n> 引用\n\n- 列表\n\n[链接](https://example.com)\n\n| A |\n| - |\n| B |'}
+      />
+    );
+
+    expect(html).toContain("<strong>加粗</strong>");
+    expect(html).toContain("<em>斜体</em>");
+    expect(html).toContain("<del>删除</del>");
+    expect(html).toContain("<code>代码</code>");
+    expect(html).toContain("<blockquote>");
+    expect(html).toContain("<ul>");
+    expect(html).toContain('<a href="https://example.com" target="_blank" rel="noopener noreferrer">链接</a>');
+    expect(html).not.toContain("<h1>");
+    expect(html).not.toContain("<table>");
+  });
+
+  it("renders explicitly written HTTPS Markdown images with privacy attributes", () => {
+    const html = renderToStaticMarkup(<CommentContent content={'正文\n\n![截图](https://example.com/comment.png)'} />);
+
+    expect(html).toContain('src="https://example.com/comment.png"');
+    expect(html).toContain('loading="lazy"');
+    expect(html).toContain('referrerPolicy="no-referrer"');
+  });
+
+  it("rejects non-HTTPS comment images and does not render raw HTML", () => {
+    const html = renderToStaticMarkup(
+      <CommentContent content={'![不安全图片](http://example.com/comment.png)\n\n<img src="https://example.com/raw.png">'} />
+    );
+
+    expect(html).not.toContain('http://example.com/comment.png');
+    expect(html).not.toContain('https://example.com/raw.png');
+  });
+
+  it("rejects unsafe link protocols", () => {
+    const html = renderToStaticMarkup(<CommentContent content={'[危险链接](javascript:alert(1))'} />);
+
+    expect(html).not.toContain("javascript:");
   });
 });

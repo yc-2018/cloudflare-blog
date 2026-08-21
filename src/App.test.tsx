@@ -365,6 +365,31 @@ describe("App article routing", () => {
     expect(screen.getByRole("heading", { name: "文章评论" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "发送评论" })).toBeTruthy();
   });
+
+  it("allows administrators to edit the nickname used for messages", async () => {
+    window.history.replaceState(null, "", "/guestbook");
+    api.createMessage.mockResolvedValueOnce({
+      message: {
+        id: 1,
+        parentId: null,
+        nickname: "站长",
+        content: "管理员留言",
+        createdAt: "2026-08-21 08:00:00",
+        replies: []
+      }
+    });
+    render(<App />);
+
+    const nicknameInput = await screen.findByRole("textbox", { name: "昵称" });
+    expect(nicknameInput).toHaveProperty("disabled", false);
+    await waitFor(() => expect(nicknameInput).toHaveProperty("value", "仰晨"));
+
+    fireEvent.change(nicknameInput, { target: { value: "站长" } });
+    fireEvent.change(screen.getByRole("textbox", { name: /^留言/ }), { target: { value: "管理员留言" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送留言" }));
+
+    await waitFor(() => expect(api.createMessage).toHaveBeenCalledWith(expect.objectContaining({ nickname: "站长" })));
+  });
 });
 
 describe("App statistics authorization", () => {

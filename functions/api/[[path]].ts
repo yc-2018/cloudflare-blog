@@ -108,7 +108,6 @@ type ApiErrorCode =
 const sessionCookieName = "blog_session";
 const oneWeekSeconds = 60 * 60 * 24 * 7;
 const articlePageSize = 10; // Number of articles returned per list page.
-const adminMessageNickname = "仰晨"; // Default nickname used for administrator messages.
 const guestMessageIntervalSeconds = 120; // Minimum seconds between guest messages.
 const messageCaptchaTtlMs = 10 * 60 * 1000; // Time before a captcha token expires.
 const messageNicknameMaxLength = 10; // Maximum displayed nickname length.
@@ -1262,7 +1261,7 @@ async function articlePasswordVisitorHash(request: Request, sessionSecret: strin
 
 /** Validates and normalizes message form input for guests and administrators. */
 export function validateMessageInput(raw: Partial<MessageInput>, authenticated: boolean): MessageInput {
-  const nickname = authenticated ? adminMessageNickname : String(raw.nickname ?? "").trim();
+  const nickname = String(raw.nickname ?? "").trim();
   const email = authenticated ? String(raw.email ?? "").trim() : String(raw.email ?? "").trim();
   const content = String(raw.content ?? "").trim();
   const parentId = raw.parentId ? Number(raw.parentId) : null;
