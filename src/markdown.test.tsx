@@ -6,6 +6,13 @@ import { describe, expect, it } from "vitest";
 import { CommentContent, MarkdownRenderer } from "./App";
 
 describe("MarkdownRenderer", () => {
+  it("renders a single source line break as a visible line break", () => {
+    const html = renderToStaticMarkup(<MarkdownRenderer content={'第一行\n第二行\n\n第三段'} />);
+
+    expect(html).toContain("<p>第一行<br/>\n第二行</p>");
+    expect(html).toContain("<p>第三段</p>");
+  });
+
   it("renders double equals text as a highlighted mark and preserves kbd tags", () => {
     const html = renderToStaticMarkup(<MarkdownRenderer content="这一段 ==重点==，按 <kbd>Ctrl</kbd>。" />);
 
@@ -35,6 +42,7 @@ describe("MarkdownRenderer", () => {
 
     expect(html).toContain("<code>==行内代码==</code>");
     expect(html).toContain("==代码块==");
+    expect(html).not.toContain("<br");
     expect(html).not.toContain("<mark>行内代码</mark>");
     expect(html).not.toContain("<mark>代码块</mark>");
   });
@@ -145,6 +153,13 @@ describe("MarkdownRenderer", () => {
 });
 
 describe("CommentContent", () => {
+  it("renders a single source line break as a visible line break", () => {
+    const html = renderToStaticMarkup(<CommentContent content={'第一行\n第二行\n\n第三段'} />);
+
+    expect(html).toContain("<p>第一行<br/>\n第二行</p>");
+    expect(html).toContain("<p>第三段</p>");
+  });
+
   it("renders lightweight Markdown without enabling headings or tables", () => {
     const html = renderToStaticMarkup(
       <CommentContent

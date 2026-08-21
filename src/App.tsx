@@ -1792,7 +1792,7 @@ export function CommentContent(props: { content: string }) {
     <div className="message-content">
       <ReactMarkdown
         allowedElements={commentMarkdownElements}
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[remarkGfm, remarkSoftLineBreaks]}
         skipHtml
         unwrapDisallowed
         urlTransform={transformCommentUrl}
@@ -2349,7 +2349,7 @@ export function MarkdownRenderer(props: { content: string }) {
   return (
     <>
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkHighlightMark, remarkHighlightMarkElement]}
+        remarkPlugins={[remarkGfm, remarkSoftLineBreaks, remarkHighlightMark, remarkHighlightMarkElement]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], [rehypeHighlight, { detect: true }]]}
         components={{
           a: ({ children, node: _node, ...anchorProps }) => (
@@ -2472,7 +2472,42 @@ function MarkdownImage(props: MarkdownImageProps) {
 interface MarkdownAstNode {
   type?: string;
   data?: Record<string, unknown>;
+  value?: string;
   children?: MarkdownAstNode[];
+}
+
+/** Converts Markdown soft line breaks into explicit break nodes while leaving code blocks untouched. */
+function remarkSoftLineBreaks() {
+  return (tree: MarkdownAstNode) => {
+    /** Rewrites newline-containing text children and recursively visits nested Markdown content. */
+    const visit = (node: MarkdownAstNode) => {
+      if (!node.children) {
+        return;
+      }
+
+      const nextChildren: MarkdownAstNode[] = []; // Children with soft line breaks replaced by break nodes.
+      node.children.forEach((child) => {
+        if (child.type === "text" && child.value?.includes("\n")) {
+          const lines = child.value.split("\n"); // Text fragments separated by source line breaks.
+          lines.forEach((line, index) => {
+            if (line) {
+              nextChildren.push({ ...child, value: line });
+            }
+            if (index < lines.length - 1) {
+              nextChildren.push({ type: "break" });
+            }
+          });
+        } else {
+          nextChildren.push(child);
+        }
+      });
+
+      node.children = nextChildren;
+      node.children.forEach(visit);
+    };
+
+    visit(tree);
+  };
 }
 
 /** Maps the plugin's highlight node to a safe mark element for rehype. */
