@@ -26,7 +26,6 @@ import {
   TagIcon,
   Tag,
   Trash2,
-  WrapText,
   X
 } from "lucide-react";
 import {
@@ -63,7 +62,6 @@ import type {
 } from "./types";
 import {
   articleToInput,
-  doubleMarkdownLineBreaks,
   emptyArticleInput,
   formatArticleTimeTitle,
   formatDate,
@@ -2688,19 +2686,6 @@ function Editor(props: {
     window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
   }
 
-  /** Turns single line breaks into Markdown paragraph breaks outside fenced code blocks. */
-  function convertLineBreaks() {
-    const result = doubleMarkdownLineBreaks(draftRef.current.content);
-    if (result.convertedCount === 0) {
-      props.onNotice("没有需要转换的单个换行");
-      return;
-    }
-
-    setField("content", result.content);
-    props.onNotice(`已将 ${result.convertedCount} 个单换行转为双换行`);
-    window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
-  }
-
   return (
     <form className="editor" onSubmit={props.onSubmit}>
       <div className="content-heading compact">
@@ -2796,10 +2781,6 @@ function Editor(props: {
               <div className="editor-compose-heading">
                 <label htmlFor="article-markdown-content">Markdown</label>
                 <div className="editor-compose-actions">
-                  <button className="text-button ghost editor-convert-button" type="button" onClick={convertLineBreaks}>
-                    <WrapText size={15} />
-                    换行变换行
-                  </button>
                   <button className="text-button ghost editor-convert-button" type="button" onClick={convertImageLinks}>
                     <ImageIcon size={15} />
                     识别图片链接转md

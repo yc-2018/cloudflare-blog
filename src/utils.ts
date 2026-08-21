@@ -58,39 +58,6 @@ export function toTagInput(tags: { name: string }[]) {
   return tags.map((tag) => tag.name).join(", ");
 }
 
-export interface MarkdownLineBreakConversion {
-  content: string;
-  convertedCount: number;
-}
-
-/** Doubles single Markdown line breaks while preserving blank lines and fenced code blocks. */
-export function doubleMarkdownLineBreaks(content: string): MarkdownLineBreakConversion {
-  const parts = content.split(/(\r\n|\n|\r)/);
-  let convertedCount = 0;
-  let fenceMarker = "";
-
-  for (let index = 0; index < parts.length - 1; index += 2) {
-    const line = parts[index];
-    const separator = parts[index + 1];
-    const nextLine = parts[index + 2] ?? "";
-    const fenceMatch = line.match(/^\s*(`{3,}|~{3,})/);
-    const isFenceLine = Boolean(fenceMatch);
-
-    if (fenceMatch) {
-      const marker = fenceMatch[1][0];
-      fenceMarker = fenceMarker === marker ? "" : fenceMarker || marker;
-    }
-
-    const isBlankLineBoundary = line.trim() === "" || nextLine.trim() === "";
-    if (!fenceMarker && !isFenceLine && !isBlankLineBoundary) {
-      parts[index + 1] = separator + separator;
-      convertedCount += 1;
-    }
-  }
-
-  return { content: parts.join(""), convertedCount };
-}
-
 export function articleToInput(article: {
   title: string;
   excerpt: string;

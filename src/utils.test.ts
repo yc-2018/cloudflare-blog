@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { doubleMarkdownLineBreaks, formatDateTime, parseTags, sampleMarkdown, toTagInput } from "./utils";
+import { formatDateTime, parseTags, sampleMarkdown, toTagInput } from "./utils";
 
 describe("tag helpers", () => {
   it("parses comma and Chinese comma separated tags", () => {
@@ -30,23 +30,5 @@ describe("new article Markdown example", () => {
     expect(content).toContain("> 这是一段引用");
     expect(content).toContain("~~删除线~~");
     expect(content).toContain("- [x] 写下想法");
-  });
-});
-
-describe("Markdown line break conversion", () => {
-  it("doubles single line breaks without expanding existing blank lines", () => {
-    expect(doubleMarkdownLineBreaks("第一行\n第二行\n\n第三行")).toEqual({
-      content: "第一行\n\n第二行\n\n第三行",
-      convertedCount: 1
-    });
-  });
-
-  it("preserves fenced code blocks and CRLF line endings", () => {
-    const content = "正文一\r\n正文二\r\n```ts\r\nconst one = 1;\r\nconst two = 2;\r\n```\r\n结尾";
-
-    expect(doubleMarkdownLineBreaks(content)).toEqual({
-      content: "正文一\r\n\r\n正文二\r\n\r\n```ts\r\nconst one = 1;\r\nconst two = 2;\r\n```\r\n结尾",
-      convertedCount: 2
-    });
   });
 });
