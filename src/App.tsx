@@ -7,9 +7,13 @@ import remarkGfm from "remark-gfm";
 import { remarkHighlightMark } from "remark-highlight-mark";
 import {
   ArrowLeft,
+  ArrowDown,
+  ArrowUp,
+  ArrowRight,
   Archive,
   BarChart3,
   MessageSquareText,
+  PanelRightOpen,
   Eye,
   EyeOff,
   FilePenLine,
@@ -23,6 +27,7 @@ import {
   Pin,
   Search,
   Share2,
+  Sparkles,
   TagIcon,
   Tag,
   Trash2,
@@ -101,6 +106,7 @@ const minLightboxScale = 0.5; // Smallest image scale allowed in the lightbox.
 const maxLightboxScale = 4; // Largest image scale allowed in the lightbox.
 const lightboxScaleStep = 0.001; // Scale change applied to each wheel delta unit.
 const lightboxDragThreshold = 4; // Pointer movement in pixels required before a click becomes a drag.
+const articlesHash = "#articles"; // Bookmark hash that opens the article list directly.
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -162,6 +168,8 @@ export function App() {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [draft, setDraft] = useState<ArticleInput>({ ...emptyArticleInput, content: sampleMarkdown() });
   const [view, setView] = useState<View>("list");
+  const [homeShowingHero, setHomeShowingHero] = useState(() => window.location.hash !== articlesHash); // Whether the root route is showing its cinematic intro.
+  const [archiveTransitioning, setArchiveTransitioning] = useState(false); // Whether the archive layer is covering the cinematic intro.
   const [authenticated, setAuthenticated] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState<PasswordPromptState | null>(null);
@@ -212,6 +220,7 @@ export function App() {
   const routeActionOwnerRef = useRef(0);
   const authActionRef = useRef("");
   const articleOpenRequestId = useRef(0);
+  const archiveTransitionTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     void bootstrap();
@@ -225,6 +234,58 @@ export function App() {
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
   }, [authenticated]);
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      if (window.location.pathname === "/" && view === "list") {
+        setHomeShowingHero(window.location.hash !== articlesHash);
+      }
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "list" || window.location.pathname !== "/" || !homeShowingHero) {
+      return;
+    }
+
+    const handleWheel = (event: WheelEvent) => {
+      if (event.deltaY > 0) {
+        event.preventDefault();
+        enterArticleList();
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowDown", "PageDown", " "].includes(event.key)) {
+        event.preventDefault();
+        enterArticleList();
+      }
+    };
+    let touchStartY = 0; // Starting vertical coordinate for the hero swipe gesture.
+    const handleTouchStart = (event: TouchEvent) => {
+      touchStartY = event.touches[0]?.clientY ?? 0;
+    };
+    const handleTouchMove = (event: TouchEvent) => {
+      const currentY = event.touches[0]?.clientY ?? touchStartY;
+      if (touchStartY - currentY > 18) {
+        event.preventDefault();
+        enterArticleList();
+      }
+    };
+
+    window.addEventListener("wheel", handleWheel, { passive: false });
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("touchstart", handleTouchStart, { passive: true });
+    window.addEventListener("touchmove", handleTouchMove, { passive: false });
+    return () => {
+      window.removeEventListener("wheel", handleWheel);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("touchstart", handleTouchStart);
+      window.removeEventListener("touchmove", handleTouchMove);
+    };
+  }, [homeShowingHero, view]);
 
   useEffect(() => {
     document.title =
@@ -360,6 +421,7 @@ export function App() {
       setActiveArticle(null);
       setEditingSlug(null);
       setPasswordPrompt(null);
+      setHomeShowingHero(window.location.hash !== articlesHash);
       setView("list");
       return;
     }
@@ -576,7 +638,9 @@ export function App() {
           window.history.pushState(null, "", `${nextUrl.pathname}${nextUrl.search}`);
         }
       }
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.requestAnimationFrame(() => {
+        document.getElementById("article-detail-anchor")?.scrollIntoView({ behavior: "auto", block: "start" });
+      });
     } catch (caught) {
       if (requestId !== articleOpenRequestId.current) {
         return;
@@ -651,9 +715,10 @@ export function App() {
     setActiveArticle(null);
     setEditingSlug(null);
     setView("list");
+    setHomeShowingHero(false);
     setPasswordPrompt(null);
-    if (window.location.pathname !== "/") {
-      window.history.pushState(null, "", "/");
+    if (window.location.pathname !== "/" || window.location.hash !== articlesHash) {
+      window.history.pushState(null, "", `/${articlesHash}`);
     }
     window.requestAnimationFrame(() => {
       const scrollTop = options.restoreScroll ? listScrollY.current : 0; // Stored article-column scroll position.
@@ -663,6 +728,42 @@ export function App() {
         window.scrollTo({ top: scrollTop, behavior: "auto" });
       }
     });
+  }
+
+  /** Moves from the cinematic root intro to the article list and records a bookmarkable hash. */
+  function enterArticleList() {
+    if (view !== "list" || window.location.pathname !== "/") {
+      showList();
+      return;
+    }
+
+    if (archiveTransitionTimerRef.current !== null) {
+      window.clearTimeout(archiveTransitionTimerRef.current);
+    }
+    setArchiveTransitioning(true);
+    setHomeShowingHero(false);
+    window.history.replaceState(null, "", `/${articlesHash}`);
+    window.scrollTo({ top: 0, behavior: "auto" });
+    archiveTransitionTimerRef.current = window.setTimeout(() => {
+      setArchiveTransitioning(false);
+      archiveTransitionTimerRef.current = null;
+    }, 620);
+  }
+
+  /** Returns from the article list to the cinematic root intro without changing the pathname. */
+  function returnToHomeHero() {
+    if (archiveTransitionTimerRef.current !== null) {
+      window.clearTimeout(archiveTransitionTimerRef.current);
+      archiveTransitionTimerRef.current = null;
+    }
+    setArchiveTransitioning(false);
+    if (window.location.pathname !== "/") {
+      showList();
+    }
+
+    setHomeShowingHero(true);
+    window.history.replaceState(null, "", "/");
+    window.scrollTo({ top: 0, behavior: "auto" });
   }
 
   /** Returns from the recycle bin or detail views before applying an article-list tag filter. */
@@ -1159,9 +1260,17 @@ export function App() {
     return new URLSearchParams(window.location.search).get(passwordQueryKey) ?? "";
   }
 
+  const isHomeHero = view === "list" && window.location.pathname === "/" && homeShowingHero; // Root route is currently in its full-screen intro state.
+
   return (
-    <div className={view === "editor" ? "app-shell app-shell-editor" : "app-shell"}>
-      <header className="topbar">
+    <div className={view === "editor" ? "app-shell app-shell-editor" : view === "list" || view === "trash" ? `app-shell app-shell-archive${archiveTransitioning ? " archive-covering" : ""}` : "app-shell"}>
+      {archiveTransitioning && (
+        <div className="transition-hero-underlay" aria-hidden="true">
+          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} onEnter={() => undefined} onGuestbook={() => undefined} />
+        </div>
+      )}
+      {archiveTransitioning && <div className="archive-cover-surface" aria-hidden="true" />}
+      {!isHomeHero && <header className="topbar">
         <button className="brand-button" type="button" onClick={() => showList()}>
           <img className="brand-mark" src="/logo.svg" alt="Cloudflare Blog" />
           <span>
@@ -1173,6 +1282,11 @@ export function App() {
           </span>
         </button>
         <nav className="top-actions">
+          {view === "list" && !homeShowingHero && window.location.pathname === "/" && (
+            <button className="icon-button return-hero-topbar-button" type="button" onClick={returnToHomeHero} aria-label="返回首页序章" title="返回首页序章">
+              <ArrowUp size={18} />
+            </button>
+          )}
           {authenticated && (
             <button
               className="text-button statistics-nav-button"
@@ -1225,7 +1339,7 @@ export function App() {
             </button>
           )}
         </nav>
-      </header>
+      </header>}
 
       <div className="toast-region" aria-live="polite" aria-atomic="true">
         {message && <Status tone="success" text={message} onClose={() => setMessage("")} />}
@@ -1235,13 +1349,19 @@ export function App() {
 
       <main
         className={
-          view === "list" || view === "trash"
-            ? "layout"
+          isHomeHero
+            ? "home-hero-main"
+            : view === "list" || view === "trash"
+            ? view === "list" && !homeShowingHero ? "layout archive-stage" : "layout"
             : view === "editor"
               ? "layout layout-detail layout-editor"
               : "layout layout-detail"
         }
       >
+        {isHomeHero ? (
+          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} onEnter={enterArticleList} onGuestbook={() => void showGuestbook()} />
+        ) : <>
+
         {(view === "list" || view === "trash") && (
           <aside className="sidebar">
             <div className="search-box">
@@ -1328,23 +1448,25 @@ export function App() {
 
         <section className="content-area" ref={contentAreaRef}>
           {view === "list" && (
-            <ArticleList
-              articles={articles}
-              hasMore={hasMoreArticles}
-              loading={loading}
-              loadingMore={loadingMore}
-              search={appliedSearch}
-              selectedTagName={selectedTagName}
-              authenticated={authenticated}
-              editingSlug={editingArticleSlug}
-              openingSlug={routeAction.startsWith("article-") ? routeAction.slice("article-".length) : ""}
-              deletingSlug={articleDeletingSlug}
-              pinningSlug={articlePinningSlug}
-              onOpen={openArticle}
-              onEdit={editArticle}
-              onDelete={removeArticle}
-              onTogglePinned={changeArticlePinned}
-            />
+            <div id="article-list-anchor">
+              <ArticleList
+                articles={articles}
+                hasMore={hasMoreArticles}
+                loading={loading}
+                loadingMore={loadingMore}
+                search={appliedSearch}
+                selectedTagName={selectedTagName}
+                authenticated={authenticated}
+                editingSlug={editingArticleSlug}
+                openingSlug={routeAction.startsWith("article-") ? routeAction.slice("article-".length) : ""}
+                deletingSlug={articleDeletingSlug}
+                pinningSlug={articlePinningSlug}
+                onOpen={openArticle}
+                onEdit={editArticle}
+                onDelete={removeArticle}
+                onTogglePinned={changeArticlePinned}
+              />
+            </div>
           )}
 
           {view === "trash" && (
@@ -1364,8 +1486,9 @@ export function App() {
           )}
 
           {view === "article" && activeArticle && (
-            <ArticleView
-              article={activeArticle}
+            <div id="article-detail-anchor">
+              <ArticleView
+                article={activeArticle}
               authenticated={authenticated}
               deleting={articleDeleting}
               deleted={Boolean(activeArticle.deletedAt)}
@@ -1410,7 +1533,8 @@ export function App() {
                   onSubmit={(event) => void submitGuestbookMessage(event, activeArticle.id)}
                 />
               }
-            />
+              />
+            </div>
           )}
 
           {view === "editor" && authenticated && (
@@ -1463,6 +1587,7 @@ export function App() {
             />
           )}
         </section>
+        </>}
       </main>
 
       {loginOpen && <LoginDialog onClose={() => setLoginOpen(false)} onLogin={handleLogin} />}
@@ -1969,6 +2094,55 @@ function ArticleList(props: {
         )
       )}
     </>
+  );
+}
+
+/** Renders the cinematic root experience before visitors enter the article archive. */
+function HeroLanding(props: {
+  articleCount: number;
+  tagCount: number;
+  onEnter: () => void;
+  onGuestbook: () => void;
+}) {
+  const [panelOpen, setPanelOpen] = useState(false); // Whether the floating discovery panel is expanded.
+
+  return (
+    <section className="hero-cinematic" aria-label="博客首页序章">
+      <div className="hero-cinematic-image" aria-hidden="true" />
+      <div className="hero-cinematic-shade" aria-hidden="true" />
+      <div className="hero-cinematic-grid" aria-hidden="true" />
+      <div className="hero-cinematic-topline"><span>YC / 556</span><span>VOL. 01 / 2026</span></div>
+      <div className="hero-cinematic-copy">
+        <div className="hero-cinematic-kicker"><Sparkles size={14} /> PERSONAL FIELD NOTES</div>
+        <h1>潮生于<br /><em>无声处。</em></h1>
+        <p className="hero-cinematic-lede">仰晨的边缘手记。代码、远方，以及一些尚未命名的念头。</p>
+        <div className="hero-cinematic-poem">
+          <span>“</span>
+          <p>且将新火试新茶，<br />诗酒趁年华。</p>
+          <small>— 苏轼《望江南·超然台作》</small>
+        </div>
+      </div>
+      <div className="hero-cinematic-meta"><span>{props.articleCount} ARTICLES / {props.tagCount} TOPICS</span><span>KEEP MOVING</span></div>
+      <button className="hero-cinematic-enter" type="button" onClick={props.onEnter} aria-label="进入文章列表">
+        <span>向下进入文章</span><ArrowDown size={18} />
+      </button>
+      <button
+        className={panelOpen ? "hero-side-toggle is-open" : "hero-side-toggle"}
+        type="button"
+        onClick={() => setPanelOpen((open) => !open)}
+        aria-label={panelOpen ? "关闭探索菜单" : "打开探索菜单"}
+        title={panelOpen ? "关闭探索菜单" : "探索"}
+      >
+        <PanelRightOpen size={20} />
+      </button>
+      <aside className={panelOpen ? "hero-side-panel is-open" : "hero-side-panel"} aria-hidden={!panelOpen}>
+        <span className="hero-side-panel-label">EXPLORE / 556</span>
+        <button type="button" onClick={props.onEnter}><span>文章档案</span><ArrowRight size={16} /></button>
+        <button type="button" onClick={props.onGuestbook}><span>留下回声</span><MessageSquareText size={16} /></button>
+        <div className="hero-side-panel-stats"><strong>{props.articleCount}</strong><small>篇已发布文字</small></div>
+      </aside>
+      <div className="hero-cinematic-scroll-hint"><span className="hero-scroll-line" /> SCROLL / WHEEL DOWN</div>
+    </section>
   );
 }
 

@@ -96,7 +96,7 @@ function articleSearchResult() {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  window.history.replaceState(null, "", "/");
+  window.history.replaceState(null, "", "/#articles");
   Object.defineProperty(window, "scrollTo", { configurable: true, value: vi.fn() });
   Object.defineProperty(window, "requestAnimationFrame", {
     configurable: true,
@@ -114,7 +114,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  window.history.replaceState(null, "", "/");
+  window.history.replaceState(null, "", "/#articles");
 });
 
 describe("App article routing", () => {
@@ -410,5 +410,43 @@ describe("App statistics authorization", () => {
     await waitFor(() => expect(screen.getByTestId("statistics-page")).toBeTruthy());
     expect(document.title).toBe("仰晨博客 - 访问统计");
     expect(window.location.pathname).toBe("/statistics");
+  });
+});
+
+describe("App personal homepage", () => {
+  it("shows the personal introduction before the article list", async () => {
+    window.history.replaceState(null, "", "/");
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: /潮生于/ })).toBeTruthy());
+    expect(document.title).toBe("仰晨博客");
+    expect(screen.queryByRole("heading", { name: "测试文章" })).toBeNull();
+    expect(screen.getByRole("button", { name: "进入文章列表" })).toBeTruthy();
+  });
+
+  it("enters the archive on a small wheel and returns with the floating button", async () => {
+    window.history.replaceState(null, "", "/");
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: /潮生于/ })).toBeTruthy());
+    fireEvent.wheel(window, { deltaY: 36 });
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "测试文章" })).toBeTruthy());
+    expect(window.location.hash).toBe("#articles");
+    fireEvent.click(screen.getByRole("button", { name: "返回首页序章" }));
+    await waitFor(() => expect(screen.getByRole("heading", { name: /潮生于/ })).toBeTruthy());
+    expect(window.location.hash).toBe("");
+  });
+
+  it("enters the archive on an upward touch swipe", async () => {
+    window.history.replaceState(null, "", "/");
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: /潮生于/ })).toBeTruthy());
+    fireEvent.touchStart(window, { touches: [{ clientY: 520 }] });
+    fireEvent.touchMove(window, { touches: [{ clientY: 470 }] });
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "测试文章" })).toBeTruthy());
+    expect(window.location.hash).toBe("#articles");
   });
 });
