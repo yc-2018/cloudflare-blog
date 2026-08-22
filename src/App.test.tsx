@@ -246,6 +246,23 @@ describe("App article routing", () => {
     );
   });
 
+  it("shows an article detail back-to-top button after scrolling", async () => {
+    api.getArticle.mockResolvedValueOnce({ article: openedArticle });
+    render(<App />);
+    await waitFor(() => expect(screen.getByRole("heading", { name: "测试文章" })).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: /测试文章/ }));
+    await waitFor(() => expect(screen.getByText("详情正文")).toBeTruthy());
+    expect(screen.queryByRole("button", { name: "回到顶部" })).toBeNull();
+
+    Object.defineProperty(window, "scrollY", { configurable: true, value: 320, writable: true });
+    fireEvent.scroll(window);
+    expect(screen.getByRole("button", { name: "回到顶部" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "回到顶部" }));
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+  });
+
   it("hides the untagged filter when there are no untagged articles", async () => {
     api.searchArticles.mockResolvedValueOnce({ ...articleSearchResult(), untaggedArticleTotal: 0 });
 

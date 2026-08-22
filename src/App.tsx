@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import { createPortal } from "react-dom";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
@@ -1404,6 +1405,18 @@ export function App() {
                 全部文章
                 <span>{loading && !selectedTag ? <ButtonSpinner /> : allArticleTotal}</span>
               </button>
+              {tags.map((tag) => (
+                <button
+                  className={selectedTag === tag.slug ? "tag-filter active" : "tag-filter"}
+                  type="button"
+                  key={tag.slug}
+                  onClick={() => selectArticleTag(tag.slug)}
+                  disabled={loading || loadingMore}
+                >
+                  {tag.name}
+                  <span>{loading && selectedTag === tag.slug ? <ButtonSpinner /> : tag.count ?? 0}</span>
+                </button>
+              ))}
               {untaggedArticleTotal > 0 && (
                 <button
                   className={
@@ -1419,18 +1432,6 @@ export function App() {
                   </span>
                 </button>
               )}
-              {tags.map((tag) => (
-                <button
-                  className={selectedTag === tag.slug ? "tag-filter active" : "tag-filter"}
-                  type="button"
-                  key={tag.slug}
-                  onClick={() => selectArticleTag(tag.slug)}
-                  disabled={loading || loadingMore}
-                >
-                  {tag.name}
-                  <span>{loading && selectedTag === tag.slug ? <ButtonSpinner /> : tag.count ?? 0}</span>
-                </button>
-              ))}
               {authenticated && (
                 <button
                   className={view === "trash" ? "tag-filter trash active" : "tag-filter trash"}
@@ -2354,6 +2355,16 @@ function ArticleView(props: {
   onShare: () => void;
   comments: React.ReactNode;
 }) {
+  const [showBackToTop, setShowBackToTop] = useState(false); // Whether the article detail has scrolled far enough to show the shortcut.
+
+  useEffect(() => {
+    /** Updates the floating shortcut visibility from the article page scroll position. */
+    const updateBackToTopVisibility = () => setShowBackToTop(window.scrollY > 240);
+    window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
+    updateBackToTopVisibility();
+    return () => window.removeEventListener("scroll", updateBackToTopVisibility);
+  }, []);
+
   return (
     <article className="article-page">
       <div className="page-tools">
@@ -2399,6 +2410,17 @@ function ArticleView(props: {
         <MarkdownRenderer content={props.article.content} />
       </div>
       {props.comments}
+      {showBackToTop && (
+        <button
+          className="article-back-to-top"
+          type="button"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          aria-label="回到顶部"
+          title="回到顶部"
+        >
+          <ArrowUp size={18} aria-hidden="true" />
+        </button>
+      )}
     </article>
   );
 }
@@ -2535,49 +2557,51 @@ export function MarkdownRenderer(props: { content: string }) {
       >
         {props.content}
       </ReactMarkdown>
-      {lightboxImage && (
-        <div
-          className="markdown-image-lightbox"
-          role="dialog"
-          aria-modal="true"
-          aria-label="图片预览"
-          onClick={closeLightbox}
-          onWheel={handleLightboxWheel}
-        >
-          <button
-            className="markdown-image-lightbox-close"
-            type="button"
-            aria-label="关闭图片预览"
+      {lightboxImage &&
+        createPortal(
+          <div
+            className="markdown-image-lightbox"
+            role="dialog"
+            aria-modal="true"
+            aria-label="图片预览"
             onClick={closeLightbox}
+            onWheel={handleLightboxWheel}
           >
-            <X size={22} />
-          </button>
-          <div className="markdown-image-lightbox-stage" onClick={closeLightbox}>
-            <img
-              className="markdown-image-lightbox-image"
-              src={lightboxImage.src}
-              alt={lightboxImage.alt}
-              draggable={false}
-              style={{ transform: `translate(${lightboxOffset.x}px, ${lightboxOffset.y}px) scale(${lightboxScale})` }}
-              onClick={handleLightboxImageClick}
-              onDragStart={(event) => event.preventDefault()}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                handleLightboxPointerDown(event);
-              }}
-              onPointerMove={(event) => {
-                event.preventDefault();
-                handleLightboxPointerMove(event);
-              }}
-              onPointerUp={handleLightboxPointerUp}
-              onPointerCancel={handleLightboxPointerUp}
-            />
-          </div>
-          <span className="markdown-image-lightbox-hint" aria-live="polite">
-            滚动缩放 · {Math.round(lightboxScale * 100)}%
-          </span>
-        </div>
-      )}
+            <button
+              className="markdown-image-lightbox-close"
+              type="button"
+              aria-label="关闭图片预览"
+              onClick={closeLightbox}
+            >
+              <X size={22} />
+            </button>
+            <div className="markdown-image-lightbox-stage" onClick={closeLightbox}>
+              <img
+                className="markdown-image-lightbox-image"
+                src={lightboxImage.src}
+                alt={lightboxImage.alt}
+                draggable={false}
+                style={{ transform: `translate(${lightboxOffset.x}px, ${lightboxOffset.y}px) scale(${lightboxScale})` }}
+                onClick={handleLightboxImageClick}
+                onDragStart={(event) => event.preventDefault()}
+                onPointerDown={(event) => {
+                  event.preventDefault();
+                  handleLightboxPointerDown(event);
+                }}
+                onPointerMove={(event) => {
+                  event.preventDefault();
+                  handleLightboxPointerMove(event);
+                }}
+                onPointerUp={handleLightboxPointerUp}
+                onPointerCancel={handleLightboxPointerUp}
+              />
+            </div>
+            <span className="markdown-image-lightbox-hint" aria-live="polite">
+              滚动缩放 · {Math.round(lightboxScale * 100)}%
+            </span>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
