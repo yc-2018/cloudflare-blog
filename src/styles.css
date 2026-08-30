@@ -2741,6 +2741,66 @@ textarea {
   mask-image: linear-gradient(90deg, #000 0%, transparent 76%);
 }
 
+.hero-danmaku-panel {
+  position: absolute;
+  right: clamp(24px, 6vw, 88px);
+  bottom: clamp(122px, 16vh, 172px);
+  z-index: 0;
+  width: min(520px, calc(100% - 48px));
+  height: 200px;
+  overflow: hidden;
+  border: 1px solid rgb(244 240 232 / 30%);
+  border-radius: 10px;
+  background: rgb(11 16 22 / 34%);
+  box-shadow: 0 18px 50px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 12%);
+  backdrop-filter: blur(4px) saturate(120%);
+}
+
+.hero-danmaku {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  color: rgb(255 255 255 / 76%);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 82%), 0 0 2px rgb(0 0 0 / 95%);
+}
+
+.hero-danmaku-track {
+  position: absolute;
+  left: 0;
+  display: flex;
+  width: max-content;
+  animation: hero-danmaku-enter var(--entry-duration, 60s) linear both, hero-danmaku-run 30s linear var(--entry-duration, 60s) infinite;
+}
+
+.hero-danmaku-track:nth-child(1) { top: 8%; }
+.hero-danmaku-track:nth-child(2) { top: 28%; }
+.hero-danmaku-track:nth-child(3) { top: 48%; }
+.hero-danmaku-track:nth-child(4) { top: 68%; }
+.hero-danmaku-track:nth-child(5) { top: 88%; }
+.hero-danmaku-track:nth-child(1) { --entry-shift: 0px; --entry-duration: 30s; }
+.hero-danmaku-track:nth-child(2) { --entry-shift: 100px; --entry-duration: 36s; }
+.hero-danmaku-track:nth-child(3) { --entry-shift: 200px; --entry-duration: 42s; }
+.hero-danmaku-track:nth-child(4) { --entry-shift: 300px; --entry-duration: 48s; }
+.hero-danmaku-track:nth-child(5) { --entry-shift: 400px; --entry-duration: 54s; }
+
+.hero-danmaku-group {
+  display: flex;
+  flex: 0 0 520px;
+  gap: 100px;
+  padding-right: 100px;
+}
+
+.hero-danmaku-line {
+  display: block;
+  width: max-content;
+  max-width: 90%;
+  white-space: nowrap;
+}
+
 .hero-cinematic-topline,
 .hero-cinematic-meta {
   position: absolute;
@@ -2753,6 +2813,7 @@ textarea {
   font-size: 11px;
   font-weight: 850;
   letter-spacing: 0;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%), 0 0 2px rgb(0 0 0 / 90%);
 }
 
 .hero-cinematic-topline {
@@ -2784,6 +2845,7 @@ textarea {
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 82%), 0 0 2px rgb(0 0 0 / 92%);
 }
 
 .hero-cinematic h1 {
@@ -2794,6 +2856,7 @@ textarea {
   font-weight: 850;
   line-height: 0.86;
   letter-spacing: 0;
+  text-shadow: 0 4px 18px rgb(0 0 0 / 88%), 0 1px 3px rgb(0 0 0 / 98%);
 }
 
 .hero-cinematic h1 em {
@@ -2809,6 +2872,7 @@ textarea {
   color: rgb(247 241 230 / 72%);
   font-size: 16px;
   line-height: 1.75;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 88%), 0 0 2px rgb(0 0 0 / 94%);
 }
 
 .hero-cinematic-poem {
@@ -2834,6 +2898,7 @@ textarea {
   font-family: Georgia, "Times New Roman", serif;
   font-size: 20px;
   line-height: 1.6;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 88%), 0 0 2px rgb(0 0 0 / 94%);
 }
 
 .hero-cinematic-poem small {
@@ -2841,6 +2906,7 @@ textarea {
   margin-top: 8px;
   color: rgb(244 240 232 / 54%);
   font-size: 11px;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%), 0 0 2px rgb(0 0 0 / 92%);
 }
 
 .hero-cinematic-enter {
@@ -2859,6 +2925,7 @@ textarea {
   color: #f4f0e8;
   font-size: 12px;
   font-weight: 850;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%), 0 0 2px rgb(0 0 0 / 90%);
   transform: translateX(-50%);
   backdrop-filter: blur(12px);
   transition: background 180ms ease, border-color 180ms ease, transform 180ms ease;
@@ -2888,11 +2955,18 @@ textarea {
   transition: background 180ms ease, color 180ms ease, transform 180ms ease;
 }
 
-.hero-side-toggle:hover,
 .hero-side-toggle.is-open {
   background: #e0a36d;
   color: #11151b;
   transform: translateY(-50%) rotate(90deg);
+}
+
+@media (hover: hover) {
+  .hero-side-toggle:hover {
+    background: #e0a36d;
+    color: #11151b;
+    transform: translateY(-50%) rotate(90deg);
+  }
 }
 
 .hero-side-panel {
@@ -2939,6 +3013,7 @@ textarea {
   background: transparent;
   color: #f4f0e8;
   font-weight: 800;
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%), 0 0 2px rgb(0 0 0 / 90%);
   text-align: left;
 }
 
@@ -2974,6 +3049,7 @@ textarea {
   font-weight: 900;
   letter-spacing: 0;
   transform: translateX(-50%);
+  text-shadow: 0 2px 8px rgb(0 0 0 / 85%), 0 0 2px rgb(0 0 0 / 90%);
 }
 
 .hero-scroll-line {
@@ -2985,6 +3061,16 @@ textarea {
 @keyframes hero-image-drift {
   from { transform: scale(1.03) translate3d(-1%, 0, 0); }
   to { transform: scale(1.08) translate3d(1%, -1%, 0); }
+}
+
+@keyframes hero-danmaku-run {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes hero-danmaku-enter {
+  from { transform: translateX(calc(50% + var(--entry-shift, 0px))); }
+  to { transform: translateX(0); }
 }
 
 @keyframes hero-stage-in {
@@ -3020,29 +3106,60 @@ textarea {
   .hero-cinematic-copy {
     width: min(100% - 36px, 620px);
     padding-bottom: 144px;
-    transform: none;
+    transform: translateY(clamp(-56px, -6vh, -32px));
   }
 
   .hero-cinematic h1 {
     font-size: 78px;
   }
 
+  .hero-danmaku {
+    font-size: 11px;
+  }
+
+  .hero-danmaku-panel {
+    right: 18px;
+    bottom: 142px;
+    width: calc(100% - 36px);
+    height: 148px;
+  }
+
+  .hero-danmaku-line {
+    max-width: 90%;
+  }
+
+  .hero-danmaku-group {
+    flex-basis: calc(100vw - 36px);
+  }
+
+  .hero-danmaku-track:nth-child(1) { --entry-duration: 30s; }
+  .hero-danmaku-track:nth-child(2) { --entry-duration: 38s; }
+  .hero-danmaku-track:nth-child(3) { --entry-duration: 47s; }
+  .hero-danmaku-track:nth-child(4) { --entry-duration: 55s; }
+  .hero-danmaku-track:nth-child(5) { --entry-duration: 64s; }
+
   .hero-side-toggle {
     top: auto;
-    right: 18px;
-    bottom: 105px;
+    right: auto;
+    bottom: 76px;
+    left: calc(50% + 80px);
     transform: none;
   }
 
-  .hero-side-toggle:hover,
   .hero-side-toggle.is-open {
     transform: rotate(90deg);
+  }
+
+  @media (hover: hover) {
+    .hero-side-toggle:hover {
+      transform: rotate(90deg);
+    }
   }
 
   .hero-side-panel {
     top: auto;
     right: 82px;
-    bottom: 90px;
+    bottom: 148px;
     transform: translate(16px, 0);
   }
 

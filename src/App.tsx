@@ -84,6 +84,7 @@ import {
 import { ArticleViewCount } from "./ArticleViewCount";
 import { StatisticsPage } from "./StatisticsPage";
 import type { Options as RehypeSanitizeOptions } from "rehype-sanitize";
+import { homeBackgrounds, homeDanmaku } from "./config/home";
 
 type View = "list" | "article" | "editor" | "guestbook" | "statistics" | "trash";
 interface PasswordPromptState {
@@ -108,6 +109,11 @@ const maxLightboxScale = 4; // Largest image scale allowed in the lightbox.
 const lightboxScaleStep = 0.001; // Scale change applied to each wheel delta unit.
 const lightboxDragThreshold = 4; // Pointer movement in pixels required before a click becomes a drag.
 const articlesHash = "#articles"; // Bookmark hash that opens the article list directly.
+
+/** Selects one configured hero background for this browser session. */
+function selectHomeBackground() {
+  return homeBackgrounds[Math.floor(Math.random() * homeBackgrounds.length)] ?? "/hero-night.jpg";
+}
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
   ...defaultSchema,
@@ -170,6 +176,7 @@ export function App() {
   const [draft, setDraft] = useState<ArticleInput>({ ...emptyArticleInput, content: sampleMarkdown() });
   const [view, setView] = useState<View>("list");
   const [homeShowingHero, setHomeShowingHero] = useState(() => window.location.hash !== articlesHash); // Whether the root route is showing its cinematic intro.
+  const [homeBackground, setHomeBackground] = useState(selectHomeBackground); // Background used by the current hero visit.
   const [archiveTransitioning, setArchiveTransitioning] = useState(false); // Whether the archive layer is covering the cinematic intro.
   const [authenticated, setAuthenticated] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -763,6 +770,7 @@ export function App() {
     }
 
     setHomeShowingHero(true);
+    setHomeBackground(selectHomeBackground());
     window.history.replaceState(null, "", "/");
     window.scrollTo({ top: 0, behavior: "auto" });
   }
@@ -1267,7 +1275,7 @@ export function App() {
     <div className={view === "editor" ? "app-shell app-shell-editor" : view === "list" || view === "trash" ? `app-shell app-shell-archive${archiveTransitioning ? " archive-covering" : ""}` : "app-shell"}>
       {archiveTransitioning && (
         <div className="transition-hero-underlay" aria-hidden="true">
-          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} onEnter={() => undefined} onGuestbook={() => undefined} />
+          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} backgroundUrl={homeBackground} onEnter={() => undefined} onGuestbook={() => undefined} />
         </div>
       )}
       {archiveTransitioning && <div className="archive-cover-surface" aria-hidden="true" />}
@@ -1360,7 +1368,7 @@ export function App() {
         }
       >
         {isHomeHero ? (
-          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} onEnter={enterArticleList} onGuestbook={() => void showGuestbook()} />
+          <HeroLanding articleCount={allArticleTotal} tagCount={tags.length} backgroundUrl={homeBackground} onEnter={enterArticleList} onGuestbook={() => void showGuestbook()} />
         ) : <>
 
         {(view === "list" || view === "trash") && (
@@ -2102,6 +2110,7 @@ function ArticleList(props: {
 function HeroLanding(props: {
   articleCount: number;
   tagCount: number;
+  backgroundUrl: string;
   onEnter: () => void;
   onGuestbook: () => void;
 }) {
@@ -2109,18 +2118,37 @@ function HeroLanding(props: {
 
   return (
     <section className="hero-cinematic" aria-label="博客首页序章">
-      <div className="hero-cinematic-image" aria-hidden="true" />
+      <div className="hero-cinematic-image" style={{ backgroundImage: `url("${props.backgroundUrl}")` }} aria-hidden="true" />
       <div className="hero-cinematic-shade" aria-hidden="true" />
       <div className="hero-cinematic-grid" aria-hidden="true" />
-      <div className="hero-cinematic-topline"><span>YC / 556</span><span>VOL. 01 / 2026</span></div>
+      <div className="hero-danmaku-panel" aria-hidden="true">
+        <div className="hero-danmaku">
+          {Array.from({ length: 5 }, (_, trackIndex) => {
+            const trackLines = homeDanmaku.filter((_, lineIndex) => lineIndex % 5 === trackIndex); // Messages assigned to this scrolling lane.
+            return (
+              <div
+                className="hero-danmaku-track"
+                key={`track-${trackIndex}`}
+              >
+                {[0, 1].map((copyIndex) => (
+                  <div className="hero-danmaku-group" key={`group-${copyIndex}`}>
+                    {trackLines.map((line) => <span className="hero-danmaku-line" key={`${copyIndex}-${line}`}>{line}</span>)}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="hero-cinematic-topline"><span>YC / 556</span><span>FIELD NOTES / 2026</span></div>
       <div className="hero-cinematic-copy">
         <div className="hero-cinematic-kicker"><Sparkles size={14} /> PERSONAL FIELD NOTES</div>
         <h1>潮生于<br /><em>无声处。</em></h1>
-        <p className="hero-cinematic-lede">仰晨的边缘手记。代码、远方，以及一些尚未命名的念头。</p>
+        <p className="hero-cinematic-lede">仰晨的边缘手记。代码、远方，以及一瞬的念头。</p>
         <div className="hero-cinematic-poem">
           <span>“</span>
-          <p>且将新火试新茶，<br />诗酒趁年华。</p>
-          <small>— 苏轼《望江南·超然台作》</small>
+          <p>欲买桂花同载酒，<br />终不似，少年游。</p>
+          <small>— 刘过《唐多令·芦叶满汀洲》</small>
         </div>
       </div>
       <div className="hero-cinematic-meta"><span>{props.articleCount} ARTICLES / {props.tagCount} TOPICS</span><span>KEEP MOVING</span></div>
