@@ -2781,11 +2781,6 @@ textarea {
 .hero-danmaku-track:nth-child(3) { top: 48%; }
 .hero-danmaku-track:nth-child(4) { top: 68%; }
 .hero-danmaku-track:nth-child(5) { top: 88%; }
-.hero-danmaku-track:nth-child(1) { --entry-shift: 0px; --entry-duration: 30s; }
-.hero-danmaku-track:nth-child(2) { --entry-shift: 100px; --entry-duration: 36s; }
-.hero-danmaku-track:nth-child(3) { --entry-shift: 200px; --entry-duration: 42s; }
-.hero-danmaku-track:nth-child(4) { --entry-shift: 300px; --entry-duration: 48s; }
-.hero-danmaku-track:nth-child(5) { --entry-shift: 400px; --entry-duration: 54s; }
 
 .hero-danmaku-group {
   display: flex;
@@ -3131,12 +3126,6 @@ textarea {
   .hero-danmaku-group {
     flex-basis: calc(100vw - 36px);
   }
-
-  .hero-danmaku-track:nth-child(1) { --entry-duration: 30s; }
-  .hero-danmaku-track:nth-child(2) { --entry-duration: 38s; }
-  .hero-danmaku-track:nth-child(3) { --entry-duration: 47s; }
-  .hero-danmaku-track:nth-child(4) { --entry-duration: 55s; }
-  .hero-danmaku-track:nth-child(5) { --entry-duration: 64s; }
 
   .hero-side-toggle {
     top: auto;

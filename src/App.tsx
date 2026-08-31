@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
 import { createPortal } from "react-dom";
 import rehypeHighlight from "rehype-highlight";
@@ -113,6 +113,19 @@ const articlesHash = "#articles"; // Bookmark hash that opens the article list d
 /** Selects one configured hero background for this browser session. */
 function selectHomeBackground() {
   return homeBackgrounds[Math.floor(Math.random() * homeBackgrounds.length)] ?? "/hero-night.jpg";
+}
+
+/** Creates a random order of initial offsets so tracks enter in a different order each visit. */
+function createDanmakuEntryProfiles() {
+  const offsets = [0, 100, 200, 300, 400];
+  for (let index = offsets.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [offsets[index], offsets[swapIndex]] = [offsets[swapIndex], offsets[index]];
+  }
+  return offsets.map((offset) => ({
+    shift: offset + Math.floor(Math.random() * 41) - 20,
+    duration: 30 + (offset / 100) * 6
+  }));
 }
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
@@ -2115,6 +2128,7 @@ function HeroLanding(props: {
   onGuestbook: () => void;
 }) {
   const [panelOpen, setPanelOpen] = useState(false); // Whether the floating discovery panel is expanded.
+  const [entryProfiles] = useState(createDanmakuEntryProfiles); // Randomized entry order for this hero visit.
 
   return (
     <section className="hero-cinematic" aria-label="博客首页序章">
@@ -2125,10 +2139,12 @@ function HeroLanding(props: {
         <div className="hero-danmaku">
           {Array.from({ length: 5 }, (_, trackIndex) => {
             const trackLines = homeDanmaku.filter((_, lineIndex) => lineIndex % 5 === trackIndex); // Messages assigned to this scrolling lane.
+            const profile = entryProfiles[trackIndex] ?? { shift: 0, duration: 30 }; // Entry profile assigned to this lane.
             return (
               <div
                 className="hero-danmaku-track"
                 key={`track-${trackIndex}`}
+                style={{ "--entry-shift": `${profile.shift}px`, "--entry-duration": `${profile.duration}s` } as CSSProperties}
               >
                 {[0, 1].map((copyIndex) => (
                   <div className="hero-danmaku-group" key={`group-${copyIndex}`}>
