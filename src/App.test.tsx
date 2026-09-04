@@ -29,7 +29,7 @@ const api = vi.hoisted(() => ({
   ApiRequestError: class ApiRequestError extends Error {
     code: string;
 
-    /** Creates the API error shape consumed by App route error handling. */
+    /** 创建 App 路由错误处理所消费的 API 错误结构。 */
     constructor(message: string, code: string) {
       super(message);
       this.code = code;
@@ -67,7 +67,7 @@ const deletedArticleSummary: ArticleSummary = {
   deletedAt: "2026-07-23 08:00:00"
 };
 
-/** Creates a controllable promise for exercising route changes during an article request. */
+/** 创建可控的 promise，用于在文章请求期间演练路由变化。 */
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (reason?: unknown) => void;
@@ -78,7 +78,7 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-/** Returns the initial article search payload used by App bootstrap. */
+/** 返回 App 启动时使用的初始文章搜索载荷。 */
 function articleSearchResult() {
   return {
     articleResult: {

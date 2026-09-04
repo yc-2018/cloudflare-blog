@@ -11,11 +11,11 @@ export interface StatisticsFilters {
   page: number;
 }
 
-const statisticsMaxPage = 1_000_000; // Largest page accepted from administrator queries.
-const articleViewCooldownSeconds = 30 * 60; // Rolling cooldown before one visitor can count the same article again.
-const statisticsPageSize = 20; // Fixed number of article-view records returned per administrator page.
+const statisticsMaxPage = 1_000_000; // 管理员查询接受的最大页码。
+const articleViewCooldownSeconds = 30 * 60; // 同一访客再次统计同一篇文章前的滚动冷却时间。
+const statisticsPageSize = 20; // 每个管理员页面返回的文章浏览记录固定条数。
 
-/** Internal row selected for an administrator article-view record. */
+/** 管理员文章浏览记录所查询出的内部数据行。 */
 interface ArticleViewQueryRow {
   id: number;
   slug: string;
@@ -28,10 +28,10 @@ interface ArticleViewQueryRow {
   viewed_at: string;
 }
 
-/** Identifies invalid administrator statistics query parameters. */
+/** 标识无效的管理员统计查询参数。 */
 export class StatisticsFilterError extends Error {}
 
-/** Converts a raw User-Agent into the device fields stored with an article view. */
+/** 将原始 User-Agent 转换为随文章浏览一同存储的设备字段。 */
 export function parseArticleViewDevice(userAgent: string) {
   if (!userAgent.trim()) {
     return { deviceType: "unknown" as const, osName: "unknown", browserName: "unknown" };
@@ -54,12 +54,12 @@ export function parseArticleViewDevice(userAgent: string) {
   };
 }
 
-/** Joins a parsed agent name and version while preserving an explicit unknown value. */
+/** 拼接解析出的代理名称与版本，同时保留明确的 unknown 值。 */
 function joinAgentName(name?: string, version?: string) {
   return [name, version].filter(Boolean).join(" ") || "unknown";
 }
 
-/** Creates the private visitor identity used by the article view cooldown. */
+/** 创建文章浏览冷却所使用的私密访客标识。 */
 export async function articleViewVisitorHash(secret: string, ipAddress: string, userAgent: string) {
   const key = await crypto.subtle.importKey(
     "raw",
@@ -73,17 +73,17 @@ export async function articleViewVisitorHash(secret: string, ipAddress: string, 
   return Array.from(new Uint8Array(signature), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-/** Escapes values used with a SQL LIKE expression and an explicit backslash escape. */
+/** 转义用于 SQL LIKE 表达式的值，并显式使用反斜杠转义。 */
 export function escapeStatisticsLike(value: string) {
   return value.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_");
 }
 
-/** Returns the inclusive cooldown boundary used by the conditional visitor claim. */
+/** 返回条件式访客占位所使用的冷却边界（含端点）。 */
 export function articleViewCutoff(now: Date) {
   return toSqliteTimestamp(new Date(now.getTime() - articleViewCooldownSeconds * 1000));
 }
 
-/** Builds the exact claim cleanup used after a permanent view batch fails. */
+/** 构建持久化浏览批处理失败后所使用的精确占位清理语句。 */
 export function buildArticleViewClaimCleanup(articleId: number, visitorHash: string, countedAt: string) {
   return {
     sql: "DELETE FROM article_view_visitors WHERE article_id = ? AND visitor_hash = ? AND last_counted_at = ?",
@@ -91,7 +91,7 @@ export function buildArticleViewClaimCleanup(articleId: number, visitorHash: str
   };
 }
 
-/** Builds bound administrator filters without interpolating any user-provided values. */
+/** 构建带绑定参数的管理员筛选条件，不插入任何用户提供的值。 */
 export function buildStatisticsWhere(filters: StatisticsFilters) {
   const clauses: string[] = [];
   const bindings: string[] = [];
@@ -105,7 +105,7 @@ export function buildStatisticsWhere(filters: StatisticsFilters) {
     bindings.push(`%${escapeStatisticsLike(filters.ip)}%`);
   }
   if (filters.device) {
-    const match = `%${escapeStatisticsLike(filters.device)}%`; // Literal substring shared by all device fields.
+    const match = `%${escapeStatisticsLike(filters.device)}%`; // 所有设备字段共用的字面子串。
     clauses.push(
       "(av.device_type LIKE ? ESCAPE '\\' OR av.os_name LIKE ? ESCAPE '\\' OR av.browser_name LIKE ? ESCAPE '\\' OR av.user_agent LIKE ? ESCAPE '\\')"
     );
@@ -123,7 +123,7 @@ export function buildStatisticsWhere(filters: StatisticsFilters) {
   return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", bindings };
 }
 
-/** Records one eligible article view and atomically keeps its detail row and counter aligned. */
+/** 记录一次有效的文章浏览，并原子性地保持明细行与计数器一致。 */
 export async function recordArticleView(
   db: D1Database,
   articleId: number,
@@ -137,7 +137,7 @@ export async function recordArticleView(
     "unknown";
   const userAgent = request.headers.get("User-Agent")?.trim() || "";
   const visitorHash = await articleViewVisitorHash(secret, ipAddress, userAgent);
-  const countedAt = toSqliteTimestamp(now); // One timestamp shared by the cooldown claim and permanent detail.
+  const countedAt = toSqliteTimestamp(now); // 冷却占位与持久化明细共用的同一时间戳。
   const claim = await db
     .prepare(
       `
@@ -188,10 +188,10 @@ export async function recordArticleView(
   return true;
 }
 
-/** Lists permanent view details and filter options for an authenticated administrator. */
+/** 为已鉴权的管理员列出持久化的浏览明细和筛选选项。 */
 export async function listArticleViewStatistics(db: D1Database, filters: StatisticsFilters) {
   const { where, bindings } = buildStatisticsWhere(filters);
-  const offset = (filters.page - 1) * statisticsPageSize; // Rows skipped before the requested statistics page.
+  const offset = (filters.page - 1) * statisticsPageSize; // 到达所请求统计页前跳过的行数。
   const [count, records, articles] = await Promise.all([
     db
       .prepare(`SELECT COUNT(*) AS total FROM article_views av JOIN articles a ON a.id = av.article_id ${where}`)
@@ -213,8 +213,8 @@ export async function listArticleViewStatistics(db: D1Database, filters: Statist
       .all<ArticleViewQueryRow>(),
     db.prepare("SELECT slug, title FROM articles ORDER BY lower(title), id").all<{ slug: string; title: string }>()
   ]);
-  const total = Number(count?.total ?? 0); // Total records matching the administrator's filters.
-  const resultRows = records.results ?? []; // Current page rows returned by D1.
+  const total = Number(count?.total ?? 0); // 符合管理员筛选条件的记录总数。
+  const resultRows = records.results ?? []; // D1 返回的当前页数据行。
 
   return {
     records: resultRows.map(formatArticleViewRecord),
@@ -226,7 +226,7 @@ export async function listArticleViewStatistics(db: D1Database, filters: Statist
   };
 }
 
-/** Maps an internal D1 row to the administrator response without exposing visitor hashes. */
+/** 将内部 D1 数据行映射为管理员响应，且不暴露访客哈希。 */
 export function formatArticleViewRecord(row: ArticleViewQueryRow) {
   const deviceType: ArticleViewDeviceType =
     row.device_type === "desktop" || row.device_type === "mobile" || row.device_type === "tablet"
@@ -246,12 +246,12 @@ export function formatArticleViewRecord(row: ArticleViewQueryRow) {
   };
 }
 
-/** Formats a Date as the normalized UTC text used by SQLite and D1. */
+/** 将 Date 格式化为 SQLite 和 D1 使用的归一化 UTC 文本。 */
 function toSqliteTimestamp(value: Date) {
   return value.toISOString().slice(0, 23).replace("T", " ");
 }
 
-/** Validates and normalizes administrator statistics filters from a request URL. */
+/** 从请求 URL 校验并归一化管理员统计筛选条件。 */
 export function parseStatisticsFilters(url: URL): StatisticsFilters {
   const article = boundedFilter(url.searchParams.get("article") ?? "", 200);
   const ip = boundedFilter(url.searchParams.get("ip") ?? "", 120);
@@ -274,7 +274,7 @@ export function parseStatisticsFilters(url: URL): StatisticsFilters {
   };
 }
 
-/** Trims a text filter and enforces its storage-safe maximum length. */
+/** 去除文本筛选条件的首尾空白，并强制其存储安全的最大长度。 */
 function boundedFilter(value: string, maxLength: number) {
   const trimmed = value.trim();
   if (trimmed.length > maxLength) {
@@ -283,7 +283,7 @@ function boundedFilter(value: string, maxLength: number) {
   return trimmed;
 }
 
-/** Parses a strict UTC calendar date without accepting JavaScript date rollover. */
+/** 解析严格的 UTC 日历日期，不接受 JavaScript 的日期溢出。 */
 function parseDate(value: string) {
   if (!value) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -297,7 +297,7 @@ function parseDate(value: string) {
   return parsed;
 }
 
-/** Advances a date while keeping the SQL boundary within four-digit years. */
+/** 推进日期，同时保证 SQL 边界处于四位年份范围内。 */
 function nextUtcDay(value: Date) {
   const next = new Date(value.getTime() + 86_400_000);
   if (!/^\d{4}-\d{2}-\d{2}T/.test(next.toISOString())) {
@@ -306,12 +306,12 @@ function nextUtcDay(value: Date) {
   return next;
 }
 
-/** Formats a UTC day boundary for lexicographically sortable D1 timestamps. */
+/** 格式化 UTC 日界，用于可按字典序排序的 D1 时间戳。 */
 function sqliteDate(value: Date) {
   return `${value.toISOString().slice(0, 10)} 00:00:00`;
 }
 
-/** Returns a one-based integer page or the first page for invalid input. */
+/** 返回从 1 开始的整数页码，输入无效时返回第一页。 */
 function positivePage(value: string | null) {
   if (!value || !/^[0-9]+$/.test(value)) return 1;
   const parsed = Number(value);

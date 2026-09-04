@@ -18,9 +18,9 @@ export function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-/** Formats a stored UTC timestamp for comments with the visitor's local date and time. */
+/** 将存储的 UTC 时间戳格式化为访客本地的日期与时间，用于评论展示。 */
 export function formatDateTime(value: string) {
-  const normalizedValue = value.includes(" ") && !value.includes("T") ? `${value.replace(" ", "T")}Z` : value; // Normalized SQLite UTC timestamp.
+  const normalizedValue = value.includes(" ") && !value.includes("T") ? `${value.replace(" ", "T")}Z` : value; // 归一化后的 SQLite UTC 时间戳。
 
   return new Intl.DateTimeFormat("zh-CN", {
     year: "numeric",
@@ -31,7 +31,7 @@ export function formatDateTime(value: string) {
   }).format(new Date(normalizedValue));
 }
 
-/** Builds the hover hint for article date labels. */
+/** 构建文章日期标签的悬浮提示文本。 */
 export function formatArticleTimeTitle(createdAt: string, updatedAt: string) {
   const createdText = formatDate(createdAt);
   const updatedText = formatDate(updatedAt);
@@ -58,7 +58,7 @@ export function toTagInput(tags: { name: string }[]) {
   return tags.map((tag) => tag.name).join(", ");
 }
 
-/** Builds a compact plain-text excerpt from the first part of Markdown content. */
+/** 从 Markdown 正文的开头部分生成一段紧凑的纯文本摘要。 */
 export function excerptFromContent(content: string, maxLength = 200) {
   const plainText = content
     .replace(/```[\s\S]*?```/g, " ")

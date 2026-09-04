@@ -15,7 +15,7 @@ interface Env {
 
 type Visibility = "public" | "private" | "password";
 type ImageHostProvider = "imgbb" | "pixhost";
-const untaggedArticleFilter = "__untagged__"; // Reserved tag query value for articles without article_tags rows.
+const untaggedArticleFilter = "__untagged__"; // 用于查询没有 article_tags 记录文章的保留标签值。
 
 interface ArticleRow {
   id: number;
@@ -107,17 +107,17 @@ type ApiErrorCode =
 
 const sessionCookieName = "blog_session";
 const oneWeekSeconds = 60 * 60 * 24 * 7;
-const articlePageSize = 10; // Number of articles returned per list page.
-const guestMessageIntervalSeconds = 120; // Minimum seconds between guest messages.
-const messageCaptchaTtlMs = 10 * 60 * 1000; // Time before a captcha token expires.
-const messageNicknameMaxLength = 10; // Maximum displayed nickname length.
-const messageEmailMaxLength = 120; // Maximum email length stored for administrator view.
-const messageContentMaxLength = 500; // Maximum plain-text message length.
-const passwordAttemptLimit = 5; // Failed article-password attempts allowed per visitor window.
-const passwordAttemptWindowMs = 60 * 60 * 1000; // Failed-attempt window length.
-const passwordBanMs = 60 * 60 * 1000; // IP ban length after too many failed attempts.
-const imageUploadMaxBytes = 10 * 1024 * 1024; // Maximum converted image size accepted by the upload proxy.
-const imageProviderTimeoutMs = 15 * 1000; // Maximum wait for a third-party image host.
+const articlePageSize = 10; // 每页列表返回的文章数量。
+const guestMessageIntervalSeconds = 120; // 访客两条留言之间的最小间隔秒数。
+const messageCaptchaTtlMs = 10 * 60 * 1000; // 验证码令牌过期前的有效时长。
+const messageNicknameMaxLength = 10; // 展示昵称的最大长度。
+const messageEmailMaxLength = 120; // 供管理员查看而存储的邮箱最大长度。
+const messageContentMaxLength = 500; // 纯文本留言的最大长度。
+const passwordAttemptLimit = 5; // 每个访客在时间窗口内允许的文章密码失败尝试次数。
+const passwordAttemptWindowMs = 60 * 60 * 1000; // 失败尝试统计的时间窗口长度。
+const passwordBanMs = 60 * 60 * 1000; // 失败尝试过多后的 IP 封禁时长。
+const imageUploadMaxBytes = 10 * 1024 * 1024; // 上传代理接受的最大转换后图片体积。
+const imageProviderTimeoutMs = 15 * 1000; // 等待第三方图床响应的最长时间。
 const imageExtensions: Record<string, string> = {
   "image/gif": "gif",
   "image/jpeg": "jpg",
@@ -169,7 +169,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 };
 
-/** Serves permanent article-view details only after administrator authentication. */
+/** 仅在通过管理员鉴权后，才提供持久化的文章浏览明细。 */
 async function handleStatistics(context: EventContext<Env, string, unknown>, segments: string[]) {
   const { request, env } = context;
   await requireAuth(request, env);
@@ -189,7 +189,7 @@ async function handleStatistics(context: EventContext<Env, string, unknown>, seg
   }
 }
 
-/** Routes tag listing requests used by filters and editor suggestions. */
+/** 处理供筛选器和编辑器建议使用的标签列表请求。 */
 async function handleTags(context: EventContext<Env, string, unknown>, segments: string[]) {
   const { request, env } = context;
 
@@ -206,7 +206,7 @@ async function handleTags(context: EventContext<Env, string, unknown>, segments:
   return jsonError("METHOD_NOT_ALLOWED", "不支持的标签请求", 405);
 }
 
-/** Routes authenticated image uploads to third-party hosts. */
+/** 将已鉴权的图片上传请求转发到第三方图床。 */
 async function handleUploads(context: EventContext<Env, string, unknown>, segments: string[]) {
   const { request, env } = context;
 
@@ -239,7 +239,7 @@ async function handleUploads(context: EventContext<Env, string, unknown>, segmen
   return jsonError("METHOD_NOT_ALLOWED", "不支持的图片请求", 405);
 }
 
-/** Uploads one image to the selected storage provider. */
+/** 将一张图片上传到所选的存储服务商。 */
 async function uploadImageToProvider(
   provider: ImageHostProvider,
   file: File,
@@ -280,7 +280,7 @@ async function uploadImageToProvider(
   return pixhostFullImageUrl(result.th_url);
 }
 
-/** Converts a Pixhost thumbnail URL into its corresponding full-resolution image URL. */
+/** 将 Pixhost 缩略图 URL 转换为其对应的完整分辨率图片 URL。 */
 export function pixhostFullImageUrl(thumbnailUrl: string) {
   try {
     const url = new URL(thumbnailUrl);
@@ -297,7 +297,7 @@ export function pixhostFullImageUrl(thumbnailUrl: string) {
   }
 }
 
-/** Applies a bounded timeout to third-party image-host requests. */
+/** 为第三方图床请求设置有时限的超时。 */
 async function fetchWithTimeout(url: string, init: RequestInit) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), imageProviderTimeoutMs);
@@ -363,7 +363,7 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
 
   if (segments.length === 0 && request.method === "GET") {
     const url = new URL(request.url);
-    const deleted = url.searchParams.get("deleted") === "1"; // Whether the administrator is viewing the article recycle bin.
+    const deleted = url.searchParams.get("deleted") === "1"; // 管理员是否正在查看文章回收站。
     if (deleted) {
       await requireAuth(request, env);
     }
@@ -427,7 +427,7 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
   }
 
   if (request.method === "GET") {
-    const includeDeleted = new URL(request.url).searchParams.get("deleted") === "1"; // Whether an administrator is opening a recycled article.
+    const includeDeleted = new URL(request.url).searchParams.get("deleted") === "1"; // 管理员是否正在打开回收站中的文章。
     if (includeDeleted) {
       await requireAuth(request, env);
     }
@@ -469,7 +469,7 @@ async function handleArticles(context: EventContext<Env, string, unknown>, segme
 
   if (request.method === "DELETE") {
     await requireAuth(request, env);
-    const permanent = new URL(request.url).searchParams.get("permanent") === "1"; // Whether to physically delete the row.
+    const permanent = new URL(request.url).searchParams.get("permanent") === "1"; // 是否物理删除该数据行。
     const result = permanent
       ? await permanentlyDeleteArticle(env.DB, slug)
       : await env.DB
@@ -524,7 +524,7 @@ async function handleArticleSearch(context: EventContext<Env, string, unknown>) 
   });
 }
 
-/** Routes guestbook message requests and applies authentication-aware behavior. */
+/** 处理留言板留言请求，并应用与鉴权状态相关的行为。 */
 async function handleMessages(context: EventContext<Env, string, unknown>, segments: string[]) {
   const { request, env } = context;
   const authenticated = await isAuthenticated(request, env);
@@ -563,7 +563,7 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
     }
     const replyTarget = input.parentId ? normalizeReplyTarget(replyTargetRow) : null;
     const messageInput = replyTarget ? { ...input, parentId: replyTarget.parentId } : input;
-    const replyToNickname = replyTarget?.replyToNickname ?? ""; // Nickname shown for flat child-to-child replies.
+    const replyToNickname = replyTarget?.replyToNickname ?? ""; // 平级的子回复之间显示的昵称。
 
     const authorHash = authenticated ? "admin" : await createGuestAuthorHash(request, env);
     if (!authenticated) {
@@ -624,7 +624,7 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
   return jsonError("METHOD_NOT_ALLOWED", "不支持的留言请求", 405);
 }
 
-/** Returns guestbook messages as a two-level tree. */
+/** 以两级树的形式返回留言板留言。 */
 async function listMessages(db: D1Database, includeEmail: boolean, articleId: number | null = null, localIds: number[] = []) {
   const clauses = [includeEmail ? "1 = 1" : localIds.length ? `(status = 'approved' OR (status = 'pending' AND id IN (${localIds.map(() => "?").join(",")})))` : "status = 'approved'"];
   clauses.push(articleId === null ? "article_id IS NULL" : "article_id = ?");
@@ -658,9 +658,9 @@ async function listMessages(db: D1Database, includeEmail: boolean, articleId: nu
   return Array.from(roots.values()).reverse();
 }
 
-/** Inserts a guestbook message after validation and rate-limit checks. */
+/** 在校验和频率限制检查通过后，插入一条留言板留言。 */
 async function createMessage(db: D1Database, input: MessageInput, authorHash: string, replyToNickname = "") {
-  const status = authorHash === "admin" ? "approved" : "pending"; // Guests require administrator approval before public display.
+  const status = authorHash === "admin" ? "approved" : "pending"; // 访客留言需经管理员审核后才能公开展示。
   const result = await db
     .prepare(
       `
@@ -679,12 +679,12 @@ async function createMessage(db: D1Database, input: MessageInput, authorHash: st
   return result;
 }
 
-/** Approves a pending guestbook message for public display. */
+/** 将一条待审核的留言板留言审核通过以公开展示。 */
 async function approveMessage(db: D1Database, messageId: number) {
   return setMessageStatus(db, messageId, "approved", false);
 }
 
-/** Updates a moderation status while returning the complete message row. */
+/** 更新审核状态，同时返回完整的留言数据行。 */
 async function setMessageStatus(db: D1Database, messageId: number, status: MessageStatus, invalid: boolean) {
   return db
     .prepare(
@@ -699,12 +699,12 @@ async function setMessageStatus(db: D1Database, messageId: number, status: Messa
     .first<MessageRow>();
 }
 
-/** Parses locally retained visitor message IDs, ignoring malformed values. */
+/** 解析本地保留的访客留言 ID，忽略格式错误的值。 */
 function parseMessageIds(value: string | null) {
   return Array.from(new Set((value ?? "").split(",").map((item) => Number(item)).filter((item) => Number.isInteger(item) && item > 0))).slice(0, 50);
 }
 
-/** Finds a message row used as the direct reply target. */
+/** 查找作为直接回复目标的留言数据行。 */
 async function getMessageById(db: D1Database, messageId: number) {
   return db
     .prepare("SELECT id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, invalid, created_at FROM guestbook_messages WHERE id = ?")
@@ -712,7 +712,7 @@ async function getMessageById(db: D1Database, messageId: number) {
     .first<MessageRow>();
 }
 
-/** Resolves any reply target into the root parent and optional displayed target nickname. */
+/** 将任意回复目标解析为根父级留言，以及可选的展示用目标昵称。 */
 export function normalizeReplyTarget(target: Pick<MessageRow, "id" | "parent_id" | "nickname"> | null) {
   if (!target) {
     throw new ApiError("NOT_FOUND", "回复的留言不存在", 404);
@@ -731,7 +731,7 @@ export function normalizeReplyTarget(target: Pick<MessageRow, "id" | "parent_id"
   };
 }
 
-/** Converts a database row into the public guestbook response shape. */
+/** 将数据库行转换为公开的留言板响应结构。 */
 function formatMessage(row: MessageRow, includeEmail: boolean) {
   return {
     id: row.id,
@@ -801,14 +801,14 @@ async function listArticles(
     LIMIT ? OFFSET ?
   `;
 
-  const offset = (options.page - 1) * options.limit; // Rows skipped before the requested page.
+  const offset = (options.page - 1) * options.limit; // 请求页之前需要跳过的行数。
   const countResult = await db.prepare(countQuery).bind(...bindings).first<{ total: number }>();
-  const total = Number(countResult?.total ?? 0); // Total matching articles before pagination.
+  const total = Number(countResult?.total ?? 0); // 分页前匹配的文章总数。
   const result = await db.prepare(query).bind(...bindings, options.limit, offset).all<ArticleRow>();
   const articles = await Promise.all(
     (result.results ?? []).map(async (row) => {
       const { content, ...article } = await articleWithTags(db, row, false);
-      const searchSnippet = buildSearchSnippet(row, search); // Visible body match shown during search.
+      const searchSnippet = buildSearchSnippet(row, search); // 搜索时展示的正文命中片段。
       return searchSnippet ? { ...article, searchSnippet } : article;
     })
   );
@@ -821,7 +821,7 @@ async function listArticles(
   };
 }
 
-/** Builds the visibility and search clauses used to count articles without tags. */
+/** 构建用于统计无标签文章的可见性与搜索条件子句。 */
 export function buildUntaggedArticleFilter(authenticated: boolean, search: string) {
   const clauses = [
     "a.deleted_at IS NULL",
@@ -847,7 +847,7 @@ export function buildUntaggedArticleFilter(authenticated: boolean, search: strin
   return { where: `WHERE ${clauses.join(" AND ")}`, bindings };
 }
 
-/** Counts untagged articles available in the current authentication and search scope. */
+/** 统计当前鉴权与搜索范围内可用的无标签文章数量。 */
 async function countUntaggedArticles(db: D1Database, options: { authenticated: boolean; search: string }) {
   const filter = buildUntaggedArticleFilter(options.authenticated, options.search);
   const result = await db
@@ -968,7 +968,7 @@ async function replaceArticleTags(db: D1Database, articleId: number, tagNames: s
   }
 }
 
-/** Removes tag records after their final article association is gone. */
+/** 在标签与最后一篇文章的关联消失后，删除该标签记录。 */
 async function cleanupOrphanedTags(db: D1Database) {
   await db
     .prepare(
@@ -984,7 +984,7 @@ async function cleanupOrphanedTags(db: D1Database) {
     .run();
 }
 
-/** Permanently removes one article that is already in the recycle bin. */
+/** 永久删除一篇已经在回收站中的文章。 */
 async function permanentlyDeleteArticle(db: D1Database, slug: string) {
   await db
     .prepare("DELETE FROM article_tags WHERE article_id = (SELECT id FROM articles WHERE slug = ? AND deleted_at IS NOT NULL)")
@@ -993,13 +993,13 @@ async function permanentlyDeleteArticle(db: D1Database, slug: string) {
   return db.prepare("DELETE FROM articles WHERE slug = ? AND deleted_at IS NOT NULL").bind(slug).run();
 }
 
-/** Loads article tags before delegating to the pure public-response formatter. */
+/** 先加载文章标签，再交由纯函数式的公开响应格式化器处理。 */
 async function articleWithTags(db: D1Database, row: ArticleRow, includeContent = true, includePassword = false) {
   const tags = await getArticleTags(db, row.id);
   return formatArticleResponse(row, tags, includeContent, includePassword);
 }
 
-/** Formats an article row without including any private visitor statistics fields. */
+/** 格式化文章数据行，且不包含任何私密的访客统计字段。 */
 export function formatArticleResponse(
   row: ArticleRow,
   tags: TagRow[],
@@ -1068,19 +1068,19 @@ async function uniqueSlug(db: D1Database, baseSlug: string) {
   return candidate;
 }
 
-/** Creates a timestamp-based slug for newly published articles. */
+/** 为新发布的文章创建基于时间戳的 slug。 */
 export function timestampSlug(date = new Date()) {
   return String(date.getTime());
 }
 
-/** Builds a short body snippet when a search match is hidden from the list card. */
+/** 当搜索命中内容未显示在列表卡片上时，构建一段简短的正文片段。 */
 export function buildSearchSnippet(row: SearchSnippetRow, search: string) {
-  const query = search.trim(); // Raw search phrase typed by the visitor.
+  const query = search.trim(); // 访客输入的原始搜索词。
   if (!query || containsIgnoreCase(row.title, query) || containsIgnoreCase(row.excerpt, query)) {
     return "";
   }
 
-  const bodyText = markdownToPlainText(row.content_md); // Markdown body converted to readable preview text.
+  const bodyText = markdownToPlainText(row.content_md); // 转换为可读预览文本的 Markdown 正文。
   if (!containsIgnoreCase(bodyText, query)) {
     return "";
   }
@@ -1088,7 +1088,7 @@ export function buildSearchSnippet(row: SearchSnippetRow, search: string) {
   return snippetAroundMatch(bodyText, query);
 }
 
-/** Removes common Markdown syntax while preserving the words users expect to search. */
+/** 移除常见的 Markdown 语法，同时保留用户期望能搜索到的文字。 */
 function markdownToPlainText(markdown: string) {
   return markdown
     .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[^\n]*\n?/g, "").replace(/```/g, ""))
@@ -1104,18 +1104,18 @@ function markdownToPlainText(markdown: string) {
     .trim();
 }
 
-/** Checks text with case-insensitive matching for search and highlight decisions. */
+/** 以忽略大小写的方式检查文本，用于搜索和高亮判断。 */
 function containsIgnoreCase(value: string, query: string) {
   return value.toLowerCase().includes(query.toLowerCase());
 }
 
-/** Crops text around the first matching search phrase. */
+/** 围绕首个匹配的搜索词截取文本。 */
 function snippetAroundMatch(text: string, query: string) {
-  const lowerText = text.toLowerCase(); // Lowercase body text for stable matching.
-  const lowerQuery = query.toLowerCase(); // Lowercase search phrase for stable matching.
+  const lowerText = text.toLowerCase(); // 转小写的正文，用于稳定匹配。
+  const lowerQuery = query.toLowerCase(); // 转小写的搜索词，用于稳定匹配。
   const matchIndex = lowerText.indexOf(lowerQuery);
-  const contextBefore = 36; // Characters kept before the matched phrase.
-  const contextAfter = 72; // Characters kept after the matched phrase.
+  const contextBefore = 36; // 匹配词之前保留的字符数。
+  const contextAfter = 72; // 匹配词之后保留的字符数。
   const start = Math.max(0, matchIndex - contextBefore);
   const end = Math.min(text.length, matchIndex + query.length + contextAfter);
   const prefix = start > 0 ? "..." : "";
@@ -1193,12 +1193,12 @@ async function ensureArticleAccessible(
   }
 }
 
-/** Maps the UI-only password visibility to the existing private database state. */
+/** 将仅存在于 UI 的密码可见性映射为数据库中已有的 private 状态。 */
 function storedVisibility(visibility: Visibility): "public" | "private" {
   return visibility === "public" ? "public" : "private";
 }
 
-/** Checks an article password and records failed attempts for the visitor IP. */
+/** 校验文章密码，并为访客 IP 记录失败尝试次数。 */
 async function verifyArticlePassword(
   request: Request,
   db: D1Database,
@@ -1253,13 +1253,13 @@ async function verifyArticlePassword(
   throw new ApiError("INVALID_PASSWORD", `密码错误，还可尝试 ${passwordAttemptLimit - failedCount} 次`, 403);
 }
 
-/** Hashes the connecting IP so the password-ban table does not store raw addresses. */
+/** 对来访 IP 做哈希处理，使密码封禁表不存储原始地址。 */
 async function articlePasswordVisitorHash(request: Request, sessionSecret: string) {
   const ip = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For")?.split(",")[0]?.trim() ?? "unknown";
   return sign(`article-password:${ip}`, sessionSecret);
 }
 
-/** Validates and normalizes message form input for guests and administrators. */
+/** 校验并归一化访客与管理员提交的留言表单输入。 */
 export function validateMessageInput(raw: Partial<MessageInput>, authenticated: boolean): MessageInput {
   const nickname = String(raw.nickname ?? "").trim();
   const email = authenticated ? String(raw.email ?? "").trim() : String(raw.email ?? "").trim();
@@ -1310,11 +1310,11 @@ export function validateMessageInput(raw: Partial<MessageInput>, authenticated: 
   };
 }
 
-/** Creates a signed arithmetic captcha challenge for guestbook guests. */
+/** 为留言板访客创建带签名的算术验证码挑战。 */
 async function createGuestbookCaptcha(secret: string) {
   const operands = createCaptchaOperands();
-  const answer = operands.left + operands.right; // Correct captcha answer.
-  const expiresAt = Date.now() + messageCaptchaTtlMs; // Absolute timestamp when the captcha expires.
+  const answer = operands.left + operands.right; // 验证码的正确答案。
+  const expiresAt = Date.now() + messageCaptchaTtlMs; // 验证码过期的绝对时间戳。
   const payload = encodePayload({ answer, expiresAt });
   const signature = await sign(payload, secret);
   return {
@@ -1324,14 +1324,14 @@ async function createGuestbookCaptcha(secret: string) {
   };
 }
 
-/** Creates bounded captcha numbers that remain easy to solve on mobile. */
+/** 生成有范围的验证码数字，保证在移动端也易于计算。 */
 export function createCaptchaOperands(): CaptchaOperands {
-  const left = Math.floor(Math.random() * 8) + 2; // Left operand between 2 and 9.
-  const right = Math.floor(Math.random() * 8) + 2; // Right operand between 2 and 9.
+  const left = Math.floor(Math.random() * 8) + 2; // 左操作数，取值 2 到 9。
+  const right = Math.floor(Math.random() * 8) + 2; // 右操作数，取值 2 到 9。
   return { left, right };
 }
 
-/** Verifies a signed arithmetic captcha token and submitted answer. */
+/** 校验带签名的算术验证码令牌和提交的答案。 */
 export async function verifyGuestbookCaptcha(secret: string, token: string, answer: string, now = Date.now()) {
   const [payload, signature] = token.split(".");
   if (!payload || !signature) {
@@ -1347,7 +1347,7 @@ export async function verifyGuestbookCaptcha(secret: string, token: string, answ
   return Boolean(captcha && captcha.expiresAt >= now && safeEqual(String(captcha.answer), answer.trim()));
 }
 
-/** Decodes captcha payloads without trusting malformed visitor input. */
+/** 解码验证码载荷，且不信任格式错误的访客输入。 */
 function decodeCaptchaPayload(payload: string): { answer: number; expiresAt: number } | null {
   try {
     const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
@@ -1362,13 +1362,13 @@ function decodeCaptchaPayload(payload: string): { answer: number; expiresAt: num
   }
 }
 
-/** Returns a stable hash for guest rate limiting without storing the raw IP address. */
+/** 返回用于访客频率限制的稳定哈希，且不存储原始 IP 地址。 */
 async function createGuestAuthorHash(request: Request, env: Env) {
   const ip = request.headers.get("CF-Connecting-IP") ?? request.headers.get("X-Forwarded-For") ?? "unknown";
   return sign(`guestbook:${ip}`, env.SESSION_SECRET);
 }
 
-/** Calculates how many seconds remain before a guest may post again. */
+/** 计算访客再次发帖前还需等待的秒数。 */
 async function remainingGuestWaitSeconds(db: D1Database, authorHash: string) {
   const latest = await db
     .prepare(
@@ -1390,7 +1390,7 @@ async function remainingGuestWaitSeconds(db: D1Database, authorHash: string) {
   return remainingCooldownSeconds(new Date(`${latest.created_at}Z`).getTime(), Date.now());
 }
 
-/** Calculates the front-end and back-end cooldown from two timestamps. */
+/** 根据两个时间戳计算前后端共用的冷却时间。 */
 export function remainingCooldownSeconds(lastCreatedAt: number, now: number) {
   const elapsedSeconds = Math.floor((now - lastCreatedAt) / 1000);
   return Math.max(0, guestMessageIntervalSeconds - elapsedSeconds);
@@ -1544,7 +1544,7 @@ function decodePathSegment(segment: string) {
   }
 }
 
-/** Parses positive integer query params with a safe fallback. */
+/** 解析正整数查询参数，并提供安全的兜底值。 */
 function parsePositiveInteger(value: string | null, fallback: number) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
@@ -1563,9 +1563,9 @@ function safeEqual(a: string, b: string) {
   return result === 0;
 }
 
-/** Creates a non-cacheable JSON API response while preserving caller status and headers. */
+/** 创建不可缓存的 JSON API 响应，同时保留调用方的状态码和请求头。 */
 export function json(data: unknown, init: ResponseInit = {}) {
-  const headers = new Headers(init.headers); // Normalize all supported HeadersInit forms before applying API defaults.
+  const headers = new Headers(init.headers); // 在应用 API 默认值前，归一化所有受支持的 HeadersInit 形式。
   headers.set("Content-Type", "application/json; charset=utf-8");
   headers.set("Cache-Control", "no-store");
 

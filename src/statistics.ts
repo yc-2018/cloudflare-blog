@@ -1,6 +1,6 @@
 import type { ArticleViewRecord, StatisticsFilters } from "./types";
 
-/** Default filter values; callers copy this object before storing mutable form state. */
+/** 默认筛选值；调用方在保存可变的表单状态前会先复制该对象。 */
 export const emptyStatisticsFilters: StatisticsFilters = {
   article: "",
   ip: "",
@@ -16,7 +16,7 @@ const statisticsTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   timeStyle: "medium"
 });
 
-/** Serializes active statistics filters in the order expected by the API. */
+/** 按 API 期望的顺序序列化当前生效的统计筛选项。 */
 export function buildStatisticsSearch(filters: StatisticsFilters, page: number) {
   const params = new URLSearchParams();
   const ip = filters.ip.trim();
@@ -31,7 +31,7 @@ export function buildStatisticsSearch(filters: StatisticsFilters, page: number) 
   return params.toString();
 }
 
-/** Maps every stored device category to its administrator-facing Chinese label. */
+/** 将每种存储的设备类别映射为面向管理员的中文标签。 */
 export function deviceTypeLabel(value: ArticleViewRecord["deviceType"]) {
   switch (value) {
     case "desktop":
@@ -49,7 +49,7 @@ export function deviceTypeLabel(value: ArticleViewRecord["deviceType"]) {
   }
 }
 
-/** Formats D1 UTC timestamps and timezone-aware ISO timestamps for display. */
+/** 格式化 D1 UTC 时间戳以及带时区的 ISO 时间戳以供展示。 */
 export function formatStatisticsTime(value: string) {
   const normalized = normalizeStatisticsTimestamp(value);
   if (!normalized) return "未知时间";
@@ -58,7 +58,7 @@ export function formatStatisticsTime(value: string) {
   return statisticsTimeFormatter.format(parsed);
 }
 
-/** Validates accepted timestamp fields and returns an unambiguous ISO value. */
+/** 校验可接受的时间戳字段，并返回无歧义的 ISO 值。 */
 function normalizeStatisticsTimestamp(value: string) {
   const d1Match = d1UtcTimestampPattern.exec(value);
   const match = d1Match ?? isoTimestampPattern.exec(value);
@@ -68,7 +68,7 @@ function normalizeStatisticsTimestamp(value: string) {
   return match[8] ? normalized : `${normalized}Z`;
 }
 
-/** Rejects calendar, clock, and timezone fields that Date would otherwise normalize. */
+/** 拒绝那些 Date 本会自动归一化的日历、时钟和时区字段。 */
 function hasValidTimestampFields(match: RegExpExecArray) {
   const year = Number(match[1]);
   const month = Number(match[2]);

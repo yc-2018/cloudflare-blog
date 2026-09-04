@@ -16,7 +16,7 @@ import type {
 import { buildStatisticsSearch } from "./statistics";
 
 export class ApiRequestError extends Error {
-  /** Creates an API error whose code lets the UI choose the correct recovery flow. */
+  /** 创建一个 API 错误，其 code 让 UI 能够选择正确的恢复流程。 */
   constructor(
     message: string,
     readonly code: string
@@ -98,7 +98,7 @@ export async function getArticle(slug: string, password = "", includeDeleted = f
   return requestJson<{ article: Article }>(`/api/articles/${encodeURIComponent(slug)}${query ? `?${query}` : ""}`);
 }
 
-/** Fetches a page of administrator-only article view records. */
+/** 获取一页仅管理员可见的文章浏览记录。 */
 export async function listArticleViewStatistics(filters: StatisticsFilters, page = 1) {
   const query = buildStatisticsSearch(filters, page);
   return requestJson<ArticleViewStatisticsResponse>(`/api/statistics?${query}`);
@@ -124,7 +124,7 @@ export async function deleteArticle(slug: string) {
   });
 }
 
-/** Toggles whether an article is pinned in the public article list. */
+/** 切换文章是否在公开文章列表中置顶。 */
 export async function toggleArticlePinned(slug: string, pinned: boolean) {
   return requestJson<{ article: Article }>(`/api/articles/${encodeURIComponent(slug)}/pin`, {
     method: "POST",
@@ -151,7 +151,7 @@ export async function restoreArticle(slug: string) {
   });
 }
 
-/** Uploads one image to a specific provider through the authenticated API proxy. */
+/** 通过已鉴权的 API 代理，将一张图片上传到指定的图床服务。 */
 export async function uploadImageFile(file: File, provider: ImageHostProvider) {
   const formData = new FormData();
   formData.set("file", file, file.name);

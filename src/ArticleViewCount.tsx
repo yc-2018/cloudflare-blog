@@ -1,9 +1,9 @@
 import { Eye } from "lucide-react";
 
-/** Displays a normalized public article view total without exposing visit details. */
+/** 展示归一化后的公开文章浏览总数，不暴露具体访问明细。 */
 export function ArticleViewCount(props: { count: number }) {
-  const count = Number.isFinite(props.count) ? Math.max(0, Math.floor(props.count)) : 0; // Stable non-negative total shown to visitors.
-  const label = `${count} 次浏览`; // Shared visible text and hover description.
+  const count = Number.isFinite(props.count) ? Math.max(0, Math.floor(props.count)) : 0; // 向访客展示的稳定非负总数。
+  const label = `${count} 次浏览`; // 可见文本与悬浮提示共用的内容。
 
   return (
     <span className="article-view-count" title={label}>

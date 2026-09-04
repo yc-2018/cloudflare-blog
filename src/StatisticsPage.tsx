@@ -5,7 +5,7 @@ import { listArticleViewStatistics } from "./api";
 import { deviceTypeLabel, emptyStatisticsFilters, formatStatisticsTime } from "./statistics";
 import type { ArticleViewRecord, ArticleViewStatisticsResponse, StatisticsFilters } from "./types";
 
-/** Renders the administrator filters, results, and pagination for article visits. */
+/** 渲染文章访问的管理员筛选项、结果与分页。 */
 export function StatisticsPage() {
   const [draftFilters, setDraftFilters] = useState<StatisticsFilters>({ ...emptyStatisticsFilters });
   const [filters, setFilters] = useState<StatisticsFilters>({ ...emptyStatisticsFilters });
@@ -15,11 +15,11 @@ export function StatisticsPage() {
   const [expandedIds, setExpandedIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const requestIdRef = useRef(0); // Monotonic identifier used to discard stale request outcomes.
+  const requestIdRef = useRef(0); // 单调递增的标识，用于丢弃过期的请求结果。
 
   useEffect(() => {
-    const requestId = requestIdRef.current + 1; // Identifier owned by this filters/page request.
-    let active = true; // Prevents this request from updating state after its effect is disposed.
+    const requestId = requestIdRef.current + 1; // 本次筛选/分页请求所拥有的标识。
+    let active = true; // 防止该请求在其 effect 被销毁后仍更新状态。
     requestIdRef.current = requestId;
     setLoading(true);
     setError("");
@@ -45,30 +45,30 @@ export function StatisticsPage() {
     };
   }, [filters, page]);
 
-  /** Updates one controlled draft filter without querying until submission. */
+  /** 更新单个受控的草稿筛选项，在提交前不发起查询。 */
   function setFilter<Key extends keyof StatisticsFilters>(key: Key, value: StatisticsFilters[Key]) {
     setDraftFilters((current) => ({ ...current, [key]: value }));
   }
 
-  /** Applies a snapshot of the draft filters and returns pagination to the first page. */
+  /** 应用草稿筛选项的快照，并将分页重置到第一页。 */
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPage(1);
     setFilters({ ...draftFilters });
   }
 
-  /** Clears draft and applied filters, using a fresh object so an empty query can be rerun. */
+  /** 清空草稿与已应用的筛选项，使用全新对象以便重新执行空查询。 */
   function reset() {
-    const empty = { ...emptyStatisticsFilters }; // Fresh filter state that also triggers a page-one refetch.
+    const empty = { ...emptyStatisticsFilters }; // 全新的筛选状态，同时触发第一页的重新拉取。
     setDraftFilters(empty);
     setPage(1);
     setFilters({ ...empty });
   }
 
-  /** Toggles the full User-Agent row for one visit record. */
+  /** 切换某条访问记录的完整 User-Agent 行显示。 */
   function toggleAgent(id: number) {
     setExpandedIds((current) => {
-      const next = new Set(current); // Independent set required for React state change detection.
+      const next = new Set(current); // React 检测状态变化所需的独立集合。
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
@@ -200,7 +200,7 @@ export function StatisticsPage() {
   );
 }
 
-/** Renders visit records in a semantic table with optionally expanded raw User-Agent rows. */
+/** 以语义化表格渲染访问记录，并可选展开原始 User-Agent 行。 */
 export function StatisticsResultsTable(props: {
   records: ArticleViewRecord[];
   expandedIds: Set<number>;
@@ -222,10 +222,10 @@ export function StatisticsResultsTable(props: {
         </thead>
         <tbody>
           {props.records.map((record) => {
-            const expanded = props.expandedIds.has(record.id); // Whether the raw agent row is currently visible.
-            const userAgent = record.userAgent || "unknown"; // Safe display fallback for an empty stored agent.
-            const toggleLabel = expanded ? "收起 User-Agent" : "展开 User-Agent"; // Accessible icon-button name.
-            const userAgentId = `statistics-user-agent-${record.id}`; // Stable target for the disclosure control.
+            const expanded = props.expandedIds.has(record.id); // 原始 User-Agent 行当前是否可见。
+            const userAgent = record.userAgent || "unknown"; // 存储的 User-Agent 为空时的安全展示兜底值。
+            const toggleLabel = expanded ? "收起 User-Agent" : "展开 User-Agent"; // 无障碍图标按钮名称。
+            const userAgentId = `statistics-user-agent-${record.id}`; // 展开/收起控件的稳定目标 id。
             return (
               <Fragment key={record.id}>
                 <tr>

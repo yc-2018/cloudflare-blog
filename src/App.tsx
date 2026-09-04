@@ -94,34 +94,34 @@ interface PasswordPromptState {
   value: string;
   error: string;
 }
-const firstArticlePage = 1; // Initial article list page.
-const siteTitle = "仰晨博客"; // Browser title used outside article pages.
-const guestbookPath = "/guestbook"; // Shareable path for the guestbook page.
-const statisticsPath = "/statistics"; // Shareable path for administrator visit statistics.
-const trashPath = "/trash"; // Shareable path for the administrator article recycle bin.
-const searchDebounceMs = 650; // Delay before querying as the visitor types.
-const minAutoSearchLength = 2; // One-character input stays local to save Cloudflare requests.
-const guestbookCooldownKey = "guestbook:lastSentAt"; // Local storage key for client-side guest cooldown.
-const guestbookPendingKey = "guestbook:pending"; // Local storage key for visitor messages awaiting moderation.
-const passwordQueryKey = "password"; // URL query key used by password article share links.
-const untaggedArticleFilter = "__untagged__"; // Reserved API filter for articles that have no tags.
-const adminDefaultNickname = "仰晨"; // Initial nickname shown to administrators when writing messages.
-const minLightboxScale = 0.5; // Smallest image scale allowed in the lightbox.
-const maxLightboxScale = 4; // Largest image scale allowed in the lightbox.
-const lightboxScaleStep = 0.001; // Scale change applied to each wheel delta unit.
-const lightboxDragThreshold = 4; // Pointer movement in pixels required before a click becomes a drag.
-const articlesHash = "#articles"; // Bookmark hash that opens the article list directly.
+const firstArticlePage = 1; // 文章列表的初始页码。
+const siteTitle = "仰晨博客"; // 文章页以外使用的浏览器标题。
+const guestbookPath = "/guestbook"; // 留言板页面的可分享路径。
+const statisticsPath = "/statistics"; // 管理员访问统计的可分享路径。
+const trashPath = "/trash"; // 管理员文章回收站的可分享路径。
+const searchDebounceMs = 650; // 访客输入时发起查询前的延迟。
+const minAutoSearchLength = 2; // 单字符输入仅在本地处理，以节省 Cloudflare 请求。
+const guestbookCooldownKey = "guestbook:lastSentAt"; // 客户端访客冷却时间所用的本地存储键。
+const guestbookPendingKey = "guestbook:pending"; // 存放待审核访客留言所用的本地存储键。
+const passwordQueryKey = "password"; // 密码文章分享链接使用的 URL 查询键。
+const untaggedArticleFilter = "__untagged__"; // 用于筛选无标签文章的保留 API 值。
+const adminDefaultNickname = "仰晨"; // 管理员写留言时显示的初始昵称。
+const minLightboxScale = 0.5; // 灯箱中允许的最小图片缩放比例。
+const maxLightboxScale = 4; // 灯箱中允许的最大图片缩放比例。
+const lightboxScaleStep = 0.001; // 每个滚轮增量单位对应的缩放变化量。
+const lightboxDragThreshold = 4; // 点击转为拖拽前指针需要移动的像素数。
+const articlesHash = "#articles"; // 直接打开文章列表的书签哈希。
 
-/** Selects one configured hero background for this browser session. */
+/** 为本次浏览器会话随机选取一张已配置的首屏背景图。 */
 function selectHomeBackground() {
   return homeBackgrounds[Math.floor(Math.random() * homeBackgrounds.length)] ?? "/hero-night.jpg";
 }
 
-/** Creates randomized initial phases and speeds so each danmaku lane starts visibly and loops seamlessly. */
+/** 生成随机的初始相位与速度，使每条弹幕轨道都有可见的起始位置并能无缝循环。 */
 function createDanmakuEntryProfiles() {
   return Array.from({ length: 5 }, () => {
-    const duration = 30 + Math.floor(Math.random() * 25); // Seconds for one complete repeated danmaku cycle.
-    const initialProgress = 0.16 + Math.random() * 0.18; // Initial cycle progress keeps each lane visibly staggered.
+    const duration = 30 + Math.floor(Math.random() * 25); // 弹幕完整循环一次所需的秒数。
+    const initialProgress = 0.16 + Math.random() * 0.18; // 初始循环进度让每条轨道明显错开。
     return {
       delay: -(duration * initialProgress),
       duration
@@ -149,8 +149,8 @@ const commentMarkdownElements = [
   "li",
   "img",
   "br"
-]; // Lightweight Markdown elements allowed in public comments and replies.
-const guestbookCooldownSeconds = 120; // Seconds a guest must wait before sending again.
+]; // 公开评论与回复中允许的轻量 Markdown 元素。
+const guestbookCooldownSeconds = 120; // 访客再次发送前必须等待的秒数。
 const defaultGuestbookDraft: GuestbookInput = {
   nickname: "",
   email: "",
@@ -189,9 +189,9 @@ export function App() {
   const [editingSlug, setEditingSlug] = useState<string | null>(null);
   const [draft, setDraft] = useState<ArticleInput>({ ...emptyArticleInput, content: sampleMarkdown() });
   const [view, setView] = useState<View>("list");
-  const [homeShowingHero, setHomeShowingHero] = useState(() => window.location.hash !== articlesHash); // Whether the root route is showing its cinematic intro.
-  const [homeBackground, setHomeBackground] = useState(selectHomeBackground); // Background used by the current hero visit.
-  const [archiveTransitioning, setArchiveTransitioning] = useState(false); // Whether the archive layer is covering the cinematic intro.
+  const [homeShowingHero, setHomeShowingHero] = useState(() => window.location.hash !== articlesHash); // 根路由是否正在展示影院式首屏。
+  const [homeBackground, setHomeBackground] = useState(selectHomeBackground); // 本次首屏访问所使用的背景图。
+  const [archiveTransitioning, setArchiveTransitioning] = useState(false); // 归档层是否正在覆盖影院式首屏。
   const [authenticated, setAuthenticated] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [passwordPrompt, setPasswordPrompt] = useState<PasswordPromptState | null>(null);
@@ -285,7 +285,7 @@ export function App() {
         enterArticleList();
       }
     };
-    let touchStartY = 0; // Starting vertical coordinate for the hero swipe gesture.
+    let touchStartY = 0; // 首屏滑动手势的起始纵坐标。
     const handleTouchStart = (event: TouchEvent) => {
       touchStartY = event.touches[0]?.clientY ?? 0;
     };
@@ -449,8 +449,8 @@ export function App() {
     }
 
     invalidateArticleOpenRequest();
-    const routeParams = new URLSearchParams(window.location.search); // Current article route query values.
-    const includeDeleted = routeParams.get("deleted") === "1"; // Whether this route targets an article in the recycle bin.
+    const routeParams = new URLSearchParams(window.location.search); // 当前文章路由的查询参数值。
+    const includeDeleted = routeParams.get("deleted") === "1"; // 该路由是否指向回收站中的文章。
     if (includeDeleted && !authenticatedOverride) {
       setLoginOpen(true);
       setView("list");
@@ -498,7 +498,7 @@ export function App() {
       return;
     }
 
-    const nextPage = articlePage + 1; // Next page requested for infinite loading.
+    const nextPage = articlePage + 1; // 无限加载请求的下一页页码。
     const requestId = articleRequestId.current;
     setLoadingMore(true);
     try {
@@ -546,13 +546,13 @@ export function App() {
     }
 
     const handleScroll = () => {
-      const scrollElement = contentAreaRef.current; // Article column scroll container on desktop list pages.
+      const scrollElement = contentAreaRef.current; // 桌面端列表页中文章栏的滚动容器。
       const usesWindowScroll = !scrollElement || scrollElement.scrollHeight <= scrollElement.clientHeight + 1;
-      const scrollTop = usesWindowScroll ? window.scrollY : scrollElement.scrollTop; // Current scroll offset.
-      const viewportHeight = usesWindowScroll ? window.innerHeight : scrollElement.clientHeight; // Visible scroll viewport.
-      const scrollHeight = usesWindowScroll ? document.documentElement.scrollHeight : scrollElement.scrollHeight; // Total scrollable height.
+      const scrollTop = usesWindowScroll ? window.scrollY : scrollElement.scrollTop; // 当前滚动偏移量。
+      const viewportHeight = usesWindowScroll ? window.innerHeight : scrollElement.clientHeight; // 可见的滚动视口高度。
+      const scrollHeight = usesWindowScroll ? document.documentElement.scrollHeight : scrollElement.scrollHeight; // 可滚动的总高度。
       const scrollBottom = scrollTop + viewportHeight;
-      const triggerLine = scrollHeight - 360; // Distance from bottom before loading more.
+      const triggerLine = scrollHeight - 360; // 距底部多远时触发加载更多。
 
       if (scrollBottom >= triggerLine) {
         void loadMoreArticles();
@@ -574,7 +574,7 @@ export function App() {
     setTagOptions(result.tags);
   }
 
-  /** Refreshes the first page of administrator-only deleted articles. */
+  /** 刷新仅管理员可见的已删除文章的第一页。 */
   async function refreshDeletedArticles() {
     setTrashLoading(true);
     setTrashLoadingMore(false);
@@ -591,13 +591,13 @@ export function App() {
     }
   }
 
-  /** Loads another page of deleted articles when the recycle bin has more rows. */
+  /** 当回收站还有更多记录时，加载下一页已删除文章。 */
   async function loadMoreDeletedArticles() {
     if (trashLoading || trashLoadingMore || !hasMoreDeletedArticles) {
       return;
     }
 
-    const nextPage = deletedArticlePage + 1; // Next recycle-bin page requested by the administrator.
+    const nextPage = deletedArticlePage + 1; // 管理员请求的回收站下一页页码。
     setTrashLoadingMore(true);
     try {
       const result = await listDeletedArticles({ page: nextPage });
@@ -617,8 +617,8 @@ export function App() {
       return;
     }
 
-    const actionKey = `article-${slug}`; // Display key for this article request.
-    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    const actionKey = `article-${slug}`; // 本次文章请求的展示键。
+    const actionOwner = beginRouteAction(actionKey); // 本次调用的唯一持有者标识。
     const scrollElement = contentAreaRef.current;
     listScrollY.current = scrollElement && scrollElement.scrollHeight > scrollElement.clientHeight + 1 ? scrollElement.scrollTop : window.scrollY;
     try {
@@ -628,9 +628,9 @@ export function App() {
     }
   }
 
-  /** Loads an article and moves the single-page app into article view. */
+  /** 加载一篇文章，并将单页应用切换到文章视图。 */
   async function loadArticle(slug: string, pushUrl: boolean, password = "", includeDeleted = false) {
-    const requestId = articleOpenRequestId.current + 1; // Request allowed to commit the next article route state.
+    const requestId = articleOpenRequestId.current + 1; // 允许提交下一个文章路由状态的请求标识。
     articleOpenRequestId.current = requestId;
     setError("");
     setLoading(true);
@@ -685,14 +685,14 @@ export function App() {
     }
   }
 
-  /** Opens a recycled article for administrator read-only viewing. */
+  /** 打开回收站中的文章，供管理员只读查看。 */
   async function openDeletedArticle(slug: string) {
     if (routeActionRef.current) {
       return;
     }
 
-    const actionKey = `deleted-article-${slug}`; // Display key for this recycled article request.
-    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    const actionKey = `deleted-article-${slug}`; // 本次回收站文章请求的展示键。
+    const actionOwner = beginRouteAction(actionKey); // 本次调用的唯一持有者标识。
     try {
       await loadArticle(slug, true, "", true);
     } finally {
@@ -700,16 +700,16 @@ export function App() {
     }
   }
 
-  /** Starts one uniquely owned asynchronous route action while retaining its display key. */
+  /** 启动一个具有唯一持有者的异步路由动作，并保留其展示键。 */
   function beginRouteAction(actionKey: string) {
-    const owner = routeActionOwnerRef.current + 1; // Monotonic identity distinct from reusable display keys.
+    const owner = routeActionOwnerRef.current + 1; // 单调递增的标识，区别于可复用的展示键。
     routeActionOwnerRef.current = owner;
     routeActionRef.current = actionKey;
     setRouteAction(actionKey);
     return owner;
   }
 
-  /** Releases a route action only when the completing operation still owns it. */
+  /** 仅当完成的操作仍持有该路由动作时才释放它。 */
   function releaseRouteAction(owner: number, actionKey: string) {
     if (routeActionOwnerRef.current !== owner || routeActionRef.current !== actionKey) {
       return;
@@ -720,7 +720,7 @@ export function App() {
     setRouteAction("");
   }
 
-  /** Prevents in-flight article and route actions from replacing a newer transition. */
+  /** 防止进行中的文章与路由动作覆盖更新的切换。 */
   function invalidateArticleOpenRequest() {
     articleOpenRequestId.current += 1;
     routeActionOwnerRef.current += 1;
@@ -743,7 +743,7 @@ export function App() {
       window.history.pushState(null, "", `/${articlesHash}`);
     }
     window.requestAnimationFrame(() => {
-      const scrollTop = options.restoreScroll ? listScrollY.current : 0; // Stored article-column scroll position.
+      const scrollTop = options.restoreScroll ? listScrollY.current : 0; // 已保存的文章栏滚动位置。
       if (contentAreaRef.current && contentAreaRef.current.scrollHeight > contentAreaRef.current.clientHeight + 1) {
         contentAreaRef.current.scrollTop = scrollTop;
       } else {
@@ -752,7 +752,7 @@ export function App() {
     });
   }
 
-  /** Moves from the cinematic root intro to the article list and records a bookmarkable hash. */
+  /** 从影院式根首屏切换到文章列表，并记录可收藏的哈希。 */
   function enterArticleList() {
     if (view !== "list" || window.location.pathname !== "/") {
       showList();
@@ -772,7 +772,7 @@ export function App() {
     }, 620);
   }
 
-  /** Returns from the article list to the cinematic root intro without changing the pathname. */
+  /** 从文章列表返回影院式根首屏，且不改变 pathname。 */
   function returnToHomeHero() {
     if (archiveTransitionTimerRef.current !== null) {
       window.clearTimeout(archiveTransitionTimerRef.current);
@@ -789,21 +789,21 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "auto" });
   }
 
-  /** Returns from the recycle bin or detail views before applying an article-list tag filter. */
+  /** 在应用文章列表标签筛选前，先从回收站或详情视图返回。 */
   function selectArticleTag(tagSlug: string) {
     showList();
     setSelectedTag(tagSlug);
   }
 
-  /** Opens the administrator article recycle bin and refreshes its first page. */
+  /** 打开管理员文章回收站并刷新其第一页。 */
   async function showTrash(pushUrl = true) {
     if (routeActionRef.current || !authenticated) {
       return;
     }
 
     invalidateArticleOpenRequest();
-    const actionKey = "trash"; // Display key for the recycle-bin refresh.
-    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    const actionKey = "trash"; // 回收站刷新的展示键。
+    const actionOwner = beginRouteAction(actionKey); // 本次调用的唯一持有者标识。
     setActiveArticle(null);
     setEditingSlug(null);
     setPasswordPrompt(null);
@@ -819,9 +819,9 @@ export function App() {
     }
   }
 
-  /** Restores one article from the recycle bin back to the normal list. */
+  /** 将一篇文章从回收站恢复到正常列表。 */
   async function restoreDeletedArticle(slug: string) {
-    const actionKey = `restore-${slug}`; // Button-level action key for restoring an article.
+    const actionKey = `restore-${slug}`; // 恢复文章的按钮级动作键。
     setTrashArticleAction(actionKey);
     setError("");
     try {
@@ -835,13 +835,13 @@ export function App() {
     }
   }
 
-  /** Permanently deletes one article from the recycle bin. */
+  /** 从回收站永久删除一篇文章。 */
   async function permanentlyDeleteDeletedArticle(slug: string) {
     if (!window.confirm("确定永久删除这篇文章吗？这个操作无法撤销。")) {
       return;
     }
 
-    const actionKey = `permanent-${slug}`; // Button-level action key for irreversible deletion.
+    const actionKey = `permanent-${slug}`; // 不可逆删除的按钮级动作键。
     setTrashArticleAction(actionKey);
     setError("");
     try {
@@ -855,15 +855,15 @@ export function App() {
     }
   }
 
-  /** Opens the shareable guestbook view and refreshes its current messages. */
+  /** 打开可分享的留言板视图并刷新其当前留言。 */
   async function showGuestbook(pushUrl = true) {
     if (routeActionRef.current) {
       return;
     }
 
     invalidateArticleOpenRequest();
-    const actionKey = "guestbook"; // Display key for this guestbook refresh.
-    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    const actionKey = "guestbook"; // 本次留言板刷新的展示键。
+    const actionOwner = beginRouteAction(actionKey); // 本次调用的唯一持有者标识。
     setActiveArticle(null);
     setEditingSlug(null);
     setPasswordPrompt(null);
@@ -879,7 +879,7 @@ export function App() {
     }
   }
 
-  /** Opens administrator visit statistics while preserving a direct, shareable route. */
+  /** 打开管理员访问统计，同时保留可直接分享的路由。 */
   function showStatistics(pushUrl = true) {
     if (routeActionRef.current) {
       return;
@@ -902,8 +902,8 @@ export function App() {
     }
 
     invalidateArticleOpenRequest();
-    const actionKey = "new-article"; // Display key for this editor preparation.
-    const actionOwner = beginRouteAction(actionKey); // Unique owner for this invocation.
+    const actionKey = "new-article"; // 本次编辑器准备的展示键。
+    const actionOwner = beginRouteAction(actionKey); // 本次调用的唯一持有者标识。
     setEditingSlug(null);
     setDraft({ ...emptyArticleInput, content: sampleMarkdown() });
     setActiveArticle(null);
@@ -929,7 +929,7 @@ export function App() {
     }
 
     invalidateArticleOpenRequest();
-    const actionOwner = routeActionOwnerRef.current + 1; // Unique owner for this editor-loading invocation.
+    const actionOwner = routeActionOwnerRef.current + 1; // 本次编辑器加载调用的唯一持有者标识。
     routeActionOwnerRef.current = actionOwner;
     setError("");
     setLoading(true);
@@ -966,7 +966,7 @@ export function App() {
     }
   }
 
-  /** Copies an article title and its current URL, retaining a password query when needed. */
+  /** 复制文章标题及其当前 URL，必要时保留密码查询参数。 */
   async function shareArticle() {
     if (!activeArticle) {
       return;
@@ -989,7 +989,7 @@ export function App() {
     }
   }
 
-  /** Tries the password currently entered in the unlock dialog. */
+  /** 尝试使用解锁对话框中当前输入的密码。 */
   async function submitArticlePassword(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!passwordPrompt) {
@@ -1057,7 +1057,7 @@ export function App() {
     }
   }
 
-  /** Toggles an article's pinned state and refreshes the current list ordering. */
+  /** 切换文章的置顶状态，并刷新当前列表排序。 */
   async function changeArticlePinned(slug: string, pinned: boolean) {
     if (articlePinningSlug) {
       return;
@@ -1111,7 +1111,7 @@ export function App() {
     }
   }
 
-  /** Reloads guestbook messages and prepares captcha state for the current viewer. */
+  /** 重新加载留言板留言，并为当前访问者准备验证码状态。 */
   async function refreshGuestbook(articleId: number | null = null, password = "") {
     const scope = articleId === null ? "guestbook" : `article-${articleId}`;
     const requestId = messageRequestIdRef.current + 1;
@@ -1156,7 +1156,7 @@ export function App() {
     }
   }
 
-  /** Requests a fresh captcha for guests after initial load or failed submission. */
+  /** 在初次加载或提交失败后，为访客请求新的验证码。 */
   async function refreshGuestbookCaptcha() {
     if (authenticated || guestbookCaptchaRefreshingRef.current) {
       return;
@@ -1176,7 +1176,7 @@ export function App() {
     }
   }
 
-  /** Sends a guestbook message or top-level reply from the shared form. */
+  /** 通过共用表单发送留言板留言或顶层回复。 */
   async function submitGuestbookMessage(event: React.FormEvent<HTMLFormElement>, articleId: number | null = null) {
     event.preventDefault();
     if (guestbookSubmittingRef.current) {
@@ -1233,7 +1233,7 @@ export function App() {
     }
   }
 
-  /** Deletes a guestbook message after administrator confirmation. */
+  /** 在管理员确认后删除一条留言板留言。 */
   async function removeGuestbookMessage(id: number, articleId: number | null = null) {
     if (guestbookActionRef.current) {
       return;
@@ -1259,7 +1259,7 @@ export function App() {
     }
   }
 
-  /** Toggles public visibility or marks a message invalid from the administrator view. */
+  /** 在管理员视图中切换留言的公开可见性，或将其标记为失效。 */
   async function changeGuestbookStatus(id: number, status: "pending" | "approved", invalid: boolean, articleId: number | null = null) {
     if (guestbookActionRef.current) return;
     const actionKey = `status-${id}`;
@@ -1283,7 +1283,7 @@ export function App() {
     return new URLSearchParams(window.location.search).get(passwordQueryKey) ?? "";
   }
 
-  const isHomeHero = view === "list" && window.location.pathname === "/" && homeShowingHero; // Root route is currently in its full-screen intro state.
+  const isHomeHero = view === "list" && window.location.pathname === "/" && homeShowingHero; // 根路由当前处于全屏序章状态。
 
   return (
     <div className={view === "editor" ? "app-shell app-shell-editor" : view === "list" || view === "trash" ? `app-shell app-shell-archive${archiveTransitioning ? " archive-covering" : ""}` : "app-shell"}>
@@ -1655,7 +1655,7 @@ function Guestbook(props: {
   const canSubmit = props.authenticated || props.cooldown === 0;
   const articleMode = props.mode === "article";
 
-  /** Updates one field in the controlled guestbook draft. */
+  /** 更新受控留言板草稿中的一个字段。 */
   function setDraftField<Key extends keyof GuestbookInput>(key: Key, value: GuestbookInput[Key]) {
     props.onDraftChange({ ...props.draft, [key]: value });
   }
@@ -1916,9 +1916,9 @@ function GuestbookReplyItem(props: {
   );
 }
 
-/** Renders lightweight comment Markdown while rejecting HTML, headings, tables, and unsafe images. */
+/** 渲染轻量的评论 Markdown，同时拒绝 HTML、标题、表格和不安全的图片。 */
 export function CommentContent(props: { content: string }) {
-  /** Restricts images to HTTPS while applying the Markdown library's safe link protocol filter. */
+  /** 将图片限制为 HTTPS，同时应用 Markdown 库的安全链接协议过滤。 */
   function transformCommentUrl(url: string, key: string) {
     if (key === "href") {
       return defaultUrlTransform(url);
@@ -1981,14 +1981,14 @@ function GuestbookListSkeleton() {
   );
 }
 
-/** Reads the remaining local guest cooldown in seconds. */
+/** 读取本地访客冷却的剩余秒数。 */
 function readGuestbookCooldown() {
-  const lastSentAt = Number(window.localStorage.getItem(guestbookCooldownKey) ?? 0); // Last local guest send timestamp.
+  const lastSentAt = Number(window.localStorage.getItem(guestbookCooldownKey) ?? 0); // 访客上一次在本地发送的时间戳。
   if (!lastSentAt) {
     return 0;
   }
 
-  const elapsedSeconds = Math.floor((Date.now() - lastSentAt) / 1000); // Seconds since the latest local send.
+  const elapsedSeconds = Math.floor((Date.now() - lastSentAt) / 1000); // 距最近一次本地发送已过去的秒数。
   return Math.max(0, guestbookCooldownSeconds - elapsedSeconds);
 }
 
@@ -2121,7 +2121,7 @@ function ArticleList(props: {
   );
 }
 
-/** Renders the cinematic root experience before visitors enter the article archive. */
+/** 在访客进入文章档案前，渲染影院式的首页序章体验。 */
 function HeroLanding(props: {
   articleCount: number;
   tagCount: number;
@@ -2129,8 +2129,8 @@ function HeroLanding(props: {
   onEnter: () => void;
   onGuestbook: () => void;
 }) {
-  const [panelOpen, setPanelOpen] = useState(false); // Whether the floating discovery panel is expanded.
-  const [entryProfiles] = useState(createDanmakuEntryProfiles); // Randomized entry order for this hero visit.
+  const [panelOpen, setPanelOpen] = useState(false); // 悬浮探索面板是否展开。
+  const [entryProfiles] = useState(createDanmakuEntryProfiles); // 本次首屏访问的随机入场顺序。
 
   return (
     <section className="hero-cinematic" aria-label="博客首页序章">
@@ -2140,8 +2140,8 @@ function HeroLanding(props: {
       <div className="hero-danmaku-panel" aria-hidden="true">
         <div className="hero-danmaku">
           {Array.from({ length: 5 }, (_, trackIndex) => {
-            const trackLines = homeDanmaku.filter((_, lineIndex) => lineIndex % 5 === trackIndex); // Messages assigned to this scrolling lane.
-            const profile = entryProfiles[trackIndex] ?? { delay: -8, duration: 30 }; // Entry profile assigned to this lane.
+            const trackLines = homeDanmaku.filter((_, lineIndex) => lineIndex % 5 === trackIndex); // 分配到这条滚动轨道的弹幕文案。
+            const profile = entryProfiles[trackIndex] ?? { delay: -8, duration: 30 }; // 分配到这条轨道的入场参数。
             return (
               <div
                 className="hero-danmaku-track"
@@ -2198,7 +2198,7 @@ interface PendingGuestbookRecord {
   message: GuestbookMessage;
 }
 
-/** Reads visitor-owned pending messages from local storage. */
+/** 从本地存储中读取归属于访客的待审核留言。 */
 function readPendingGuestbookMessages(scope: string): PendingGuestbookRecord[] {
   try {
     const records = JSON.parse(window.localStorage.getItem(guestbookPendingKey) ?? "[]") as PendingGuestbookRecord[];
@@ -2208,29 +2208,29 @@ function readPendingGuestbookMessages(scope: string): PendingGuestbookRecord[] {
   }
 }
 
-/** Writes the retained pending-message records while preserving other scopes. */
+/** 写入需保留的待审核留言记录，同时保留其他作用域的数据。 */
 function writePendingGuestbookMessages(scope: string, scopeRecords: PendingGuestbookRecord[]) {
   try {
     const all = JSON.parse(window.localStorage.getItem(guestbookPendingKey) ?? "[]") as PendingGuestbookRecord[];
     const other = all.filter((record) => record.scope !== scope);
     window.localStorage.setItem(guestbookPendingKey, JSON.stringify([...other, ...scopeRecords]));
   } catch {
-    // Local storage can be unavailable in privacy-restricted browsers.
+    // 在隐私受限的浏览器中，本地存储可能不可用。
   }
 }
 
-/** Adds a freshly submitted visitor message to its local moderation queue. */
+/** 将刚提交的访客留言加入其本地待审核队列。 */
 function addPendingGuestbookMessage(scope: string, message: GuestbookMessage) {
   const records = readPendingGuestbookMessages(scope).filter((record) => record.message.id !== message.id);
   writePendingGuestbookMessages(scope, [...records, { scope, message }]);
 }
 
-/** Flattens the two-level message tree for local ID reconciliation. */
+/** 将两级留言树扁平化，以便在本地核对 ID。 */
 function flattenGuestbookMessages(messages: GuestbookMessage[]) {
   return messages.flatMap((message) => [message, ...message.replies]);
 }
 
-/** Marks rows retained locally so the visitor can see their moderation state. */
+/** 标记本地保留的留言行，让访客能看到其审核状态。 */
 function markLocalPendingMessages(messages: GuestbookMessage[], ids: Set<number>): GuestbookMessage[] {
   return messages.map((message) => ({
     ...message,
@@ -2358,17 +2358,17 @@ function ArticleListSkeleton(props: { compact?: boolean }) {
   );
 }
 
-/** Highlights the matching search phrase inside a body snippet without injecting HTML. */
+/** 在正文片段中高亮匹配的搜索词，且不注入 HTML。 */
 function HighlightedSnippet(props: { query: string; text: string }) {
-  const query = props.query.trim(); // Search phrase highlighted in the snippet.
+  const query = props.query.trim(); // 片段中需要高亮的搜索词。
   if (!query) {
     return <>{props.text}</>;
   }
 
-  const lowerText = props.text.toLowerCase(); // Lowercase snippet for finding all matches.
-  const lowerQuery = query.toLowerCase(); // Lowercase query for case-insensitive matching.
+  const lowerText = props.text.toLowerCase(); // 转小写的片段，用于查找所有匹配。
+  const lowerQuery = query.toLowerCase(); // 转小写的查询词，用于忽略大小写匹配。
   const parts: React.ReactNode[] = [];
-  let cursor = 0; // Current text offset while splitting the snippet.
+  let cursor = 0; // 拆分片段时的当前文本偏移量。
   let matchIndex = lowerText.indexOf(lowerQuery);
 
   while (matchIndex >= 0) {
@@ -2376,7 +2376,7 @@ function HighlightedSnippet(props: { query: string; text: string }) {
       parts.push(props.text.slice(cursor, matchIndex));
     }
 
-    const endIndex = matchIndex + query.length; // End offset of the highlighted phrase.
+    const endIndex = matchIndex + query.length; // 高亮词的结束偏移量。
     parts.push(<mark key={`${matchIndex}-${endIndex}`}>{props.text.slice(matchIndex, endIndex)}</mark>);
     cursor = endIndex;
     matchIndex = lowerText.indexOf(lowerQuery, cursor);
@@ -2401,10 +2401,10 @@ function ArticleView(props: {
   onShare: () => void;
   comments: React.ReactNode;
 }) {
-  const [showBackToTop, setShowBackToTop] = useState(false); // Whether the article detail has scrolled far enough to show the shortcut.
+  const [showBackToTop, setShowBackToTop] = useState(false); // 文章详情是否已滚动到足以显示快捷按钮的程度。
 
   useEffect(() => {
-    /** Updates the floating shortcut visibility from the article page scroll position. */
+    /** 根据文章页滚动位置更新悬浮快捷按钮的可见性。 */
     const updateBackToTopVisibility = () => setShowBackToTop(window.scrollY > 240);
     window.addEventListener("scroll", updateBackToTopVisibility, { passive: true });
     updateBackToTopVisibility();
@@ -2472,13 +2472,13 @@ function ArticleView(props: {
 }
 
 export function MarkdownRenderer(props: { content: string }) {
-  const [lightboxImage, setLightboxImage] = useState<MarkdownImageData | null>(null); // Currently enlarged Markdown image.
-  const [lightboxScale, setLightboxScale] = useState(1); // Current lightbox image scale.
-  const [lightboxOffset, setLightboxOffset] = useState({ x: 0, y: 0 }); // Current image drag offset.
-  const lightboxDragRef = useRef<LightboxDragState | null>(null); // Active pointer drag state.
-  const suppressLightboxClickRef = useRef(false); // Prevents a drag release from closing the image.
+  const [lightboxImage, setLightboxImage] = useState<MarkdownImageData | null>(null); // 当前放大的 Markdown 图片。
+  const [lightboxScale, setLightboxScale] = useState(1); // 当前灯箱图片的缩放比例。
+  const [lightboxOffset, setLightboxOffset] = useState({ x: 0, y: 0 }); // 当前图片的拖拽偏移量。
+  const lightboxDragRef = useRef<LightboxDragState | null>(null); // 当前进行中的指针拖拽状态。
+  const suppressLightboxClickRef = useRef(false); // 防止拖拽松开时误关闭图片。
 
-  /** Opens a Markdown image and resets its zoom level. */
+  /** 打开一张 Markdown 图片并重置其缩放级别。 */
   const openLightboxImage = useCallback((image: MarkdownImageData) => {
     setLightboxImage(image);
     setLightboxScale(1);
@@ -2486,7 +2486,7 @@ export function MarkdownRenderer(props: { content: string }) {
     suppressLightboxClickRef.current = false;
   }, []);
 
-  /** Closes the lightbox and restores its default zoom level. */
+  /** 关闭灯箱并恢复其默认缩放级别。 */
   const closeLightbox = useCallback(() => {
     setLightboxImage(null);
     setLightboxScale(1);
@@ -2495,17 +2495,17 @@ export function MarkdownRenderer(props: { content: string }) {
     suppressLightboxClickRef.current = false;
   }, []);
 
-  /** Applies mouse-wheel zoom while keeping the image scale within safe bounds. */
+  /** 应用鼠标滚轮缩放，同时将图片缩放比例保持在安全范围内。 */
   const handleLightboxWheel = useCallback((event: React.WheelEvent<HTMLDivElement>) => {
     event.preventDefault();
-    const nextScale = Math.min(maxLightboxScale, Math.max(minLightboxScale, lightboxScale - event.deltaY * lightboxScaleStep)); // Scale after this wheel event.
+    const nextScale = Math.min(maxLightboxScale, Math.max(minLightboxScale, lightboxScale - event.deltaY * lightboxScaleStep)); // 本次滚轮事件后的缩放比例。
     setLightboxScale(nextScale);
     if (nextScale <= 1) {
       setLightboxOffset({ x: 0, y: 0 });
     }
   }, [lightboxScale]);
 
-  /** Starts dragging the enlarged image when it is zoomed beyond its base size. */
+  /** 当放大图片超出其原始尺寸时，开始拖拽。 */
   const handleLightboxPointerDown = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
     if (lightboxScale <= 1 || (event.pointerType === "mouse" && event.button !== 0)) {
       return;
@@ -2524,15 +2524,15 @@ export function MarkdownRenderer(props: { content: string }) {
     }
   }, [lightboxOffset.x, lightboxOffset.y, lightboxScale]);
 
-  /** Moves the enlarged image while the pointer is held down. */
+  /** 在指针按住期间移动放大的图片。 */
   const handleLightboxPointerMove = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    const drag = lightboxDragRef.current; // Current pointer drag state.
+    const drag = lightboxDragRef.current; // 当前指针拖拽状态。
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
     }
 
-    const deltaX = event.clientX - drag.startX; // Horizontal pointer movement.
-    const deltaY = event.clientY - drag.startY; // Vertical pointer movement.
+    const deltaX = event.clientX - drag.startX; // 指针的水平移动量。
+    const deltaY = event.clientY - drag.startY; // 指针的垂直移动量。
     if (!drag.moved && Math.hypot(deltaX, deltaY) < lightboxDragThreshold) {
       return;
     }
@@ -2541,9 +2541,9 @@ export function MarkdownRenderer(props: { content: string }) {
     setLightboxOffset({ x: drag.originX + deltaX, y: drag.originY + deltaY });
   }, []);
 
-  /** Ends an image drag and suppresses the synthetic click generated after movement. */
+  /** 结束图片拖拽，并抑制移动后产生的合成点击事件。 */
   const handleLightboxPointerUp = useCallback((event: React.PointerEvent<HTMLImageElement>) => {
-    const drag = lightboxDragRef.current; // Current pointer drag state.
+    const drag = lightboxDragRef.current; // 当前指针拖拽状态。
     if (!drag || drag.pointerId !== event.pointerId) {
       return;
     }
@@ -2555,7 +2555,7 @@ export function MarkdownRenderer(props: { content: string }) {
     suppressLightboxClickRef.current = drag.moved;
   }, []);
 
-  /** Closes on a simple image click while preserving a completed drag. */
+  /** 在简单点击图片时关闭预览，同时保留已完成的拖拽。 */
   const handleLightboxImageClick = useCallback((event: React.MouseEvent<HTMLImageElement>) => {
     event.stopPropagation();
     if (suppressLightboxClickRef.current) {
@@ -2571,7 +2571,7 @@ export function MarkdownRenderer(props: { content: string }) {
       return;
     }
 
-    const previousBodyOverflow = document.body.style.overflow; // Body overflow value restored after closing the preview.
+    const previousBodyOverflow = document.body.style.overflow; // 关闭预览后需要恢复的 body overflow 值。
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         closeLightbox();
@@ -2673,16 +2673,16 @@ interface MarkdownImageProps {
   onOpen: (image: MarkdownImageData) => void;
 }
 
-/** Renders a Markdown image that can be opened in an accessible full-screen preview. */
+/** 渲染一张 Markdown 图片，可在无障碍的全屏预览中打开。 */
 function MarkdownImage(props: MarkdownImageProps) {
-  const alt = props.alt ?? ""; // Alternative text shown when the image cannot load.
-  const src = props.src ?? ""; // Source URL for the Markdown image.
+  const alt = props.alt ?? ""; // 图片无法加载时显示的替代文本。
+  const src = props.src ?? ""; // Markdown 图片的源 URL。
 
   if (!src) {
     return <img alt={alt} title={props.title} />;
   }
 
-  /** Opens this image in the parent Markdown lightbox. */
+  /** 在父级 Markdown 灯箱中打开这张图片。 */
   function openImage() {
     props.onOpen({ src, alt });
   }
@@ -2718,19 +2718,19 @@ interface MarkdownAstNode {
   children?: MarkdownAstNode[];
 }
 
-/** Converts Markdown soft line breaks into explicit break nodes while leaving code blocks untouched. */
+/** 将 Markdown 软换行转换为显式的 break 节点，同时不改动代码块。 */
 function remarkSoftLineBreaks() {
   return (tree: MarkdownAstNode) => {
-    /** Rewrites newline-containing text children and recursively visits nested Markdown content. */
+    /** 重写包含换行符的文本子节点，并递归遍历嵌套的 Markdown 内容。 */
     const visit = (node: MarkdownAstNode) => {
       if (!node.children) {
         return;
       }
 
-      const nextChildren: MarkdownAstNode[] = []; // Children with soft line breaks replaced by break nodes.
+      const nextChildren: MarkdownAstNode[] = []; // 已将软换行替换为 break 节点的子节点集合。
       node.children.forEach((child) => {
         if (child.type === "text" && child.value?.includes("\n")) {
-          const lines = child.value.split("\n"); // Text fragments separated by source line breaks.
+          const lines = child.value.split("\n"); // 按源文本换行符拆分出的文本片段。
           lines.forEach((line, index) => {
             if (line) {
               nextChildren.push({ ...child, value: line });
@@ -2752,7 +2752,7 @@ function remarkSoftLineBreaks() {
   };
 }
 
-/** Maps the plugin's highlight node to a safe mark element for rehype. */
+/** 将该插件的 highlight 节点映射为供 rehype 使用的安全 mark 元素。 */
 function remarkHighlightMarkElement() {
   return (tree: MarkdownAstNode) => {
     const visit = (node: MarkdownAstNode) => {
@@ -2833,7 +2833,7 @@ function Editor(props: {
   onCancel: () => void;
 }) {
   const [uploadingTarget, setUploadingTarget] = useState<"cover" | "content" | "">("");
-  const [autoExcerpt, setAutoExcerpt] = useState(() => !props.draft.excerpt.trim()); // Whether the excerpt follows the article body.
+  const [autoExcerpt, setAutoExcerpt] = useState(() => !props.draft.excerpt.trim()); // 摘要是否跟随文章正文自动生成。
   const draftRef = useRef(props.draft);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2850,7 +2850,7 @@ function Editor(props: {
     }
   }, [autoExcerpt]);
 
-  /** Updates the draft and its synchronous ref used by asynchronous uploads. */
+  /** 更新草稿及其供异步上传使用的同步 ref。 */
   function updateDraft(nextDraft: ArticleInput) {
     draftRef.current = nextDraft;
     props.onDraftChange(nextDraft);
@@ -2860,7 +2860,7 @@ function Editor(props: {
     updateDraft({ ...draftRef.current, [key]: value });
   };
 
-  /** Uploads a pasted image and writes its URL into the list-image field. */
+  /** 上传粘贴的图片，并将其 URL 写入列表图片字段。 */
   async function uploadCoverImage(file: File) {
     if (uploadingTarget) {
       props.onError("请等待当前图片上传完成");
@@ -2880,14 +2880,14 @@ function Editor(props: {
     }
   }
 
-  /** Inserts a temporary Markdown marker and replaces it with the uploaded image URL. */
+  /** 插入一个临时的 Markdown 占位标记，并在上传完成后替换为图片 URL。 */
   async function uploadContentImage(file: File, selectionStart: number, selectionEnd: number) {
     if (uploadingTarget) {
       props.onError("请等待当前图片上传完成");
       return;
     }
 
-    const markerId = `uploading-${crypto.randomUUID()}`; // Unique marker preserved across asynchronous state updates.
+    const markerId = `uploading-${crypto.randomUUID()}`; // 在异步状态更新过程中保持唯一的占位标记。
     const marker = markdownImage(markerId, "图片上传中…");
     const content = draftRef.current.content;
     updateDraft({ ...draftRef.current, content: `${content.slice(0, selectionStart)}${marker}${content.slice(selectionEnd)}` });
@@ -2907,7 +2907,7 @@ function Editor(props: {
     }
   }
 
-  /** Captures an image from the cover input clipboard without affecting normal text paste. */
+  /** 从封面输入框的剪贴板中捕获图片，同时不影响正常的文本粘贴。 */
   function handleCoverPaste(event: React.ClipboardEvent<HTMLInputElement>) {
     const image = clipboardImage(event.clipboardData);
     if (!image) {
@@ -2917,7 +2917,7 @@ function Editor(props: {
     void uploadCoverImage(image);
   }
 
-  /** Captures an image from the Markdown textarea and remembers its insertion point. */
+  /** 从 Markdown 文本域中捕获图片，并记住其插入位置。 */
   function handleContentPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const image = clipboardImage(event.clipboardData);
     if (!image) {
@@ -2927,7 +2927,7 @@ function Editor(props: {
     void uploadContentImage(image, event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
   }
 
-  /** Converts standalone image URL lines in the article body to Markdown images. */
+  /** 将正文中单独成行的图片 URL 转换为 Markdown 图片。 */
   function convertImageLinks() {
     const result = convertStandaloneImageLinks(draftRef.current.content);
     if (result.convertedCount === 0) {
@@ -2940,13 +2940,13 @@ function Editor(props: {
     window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
   }
 
-  /** Updates the excerpt manually and disables automatic body-based generation. */
+  /** 手动更新摘要，并禁用基于正文的自动生成。 */
   function handleExcerptChange(value: string) {
     setAutoExcerpt(false);
     setField("excerpt", value);
   }
 
-  /** Keeps the generated excerpt in sync while automatic mode is enabled. */
+  /** 在自动模式启用时，保持生成的摘要同步更新。 */
   function handleContentChange(value: string) {
     const nextDraft = { ...draftRef.current, content: value };
     if (autoExcerpt) {
@@ -3240,12 +3240,12 @@ function SegmentedVisibility(props: { value: Visibility; onChange: (value: Visib
   );
 }
 
-/** Returns the first pasted clipboard image, if the paste contains one. */
+/** 如果粘贴内容中包含图片，则返回剪贴板中的第一张图片。 */
 function clipboardImage(clipboardData: DataTransfer) {
   return Array.from(clipboardData.files).find((file) => file.type.startsWith("image/")) ?? null;
 }
 
-/** Creates a four-character alphanumeric password for a newly protected article. */
+/** 为新设置的受保护文章生成一个四位字母数字密码。 */
 function createDefaultArticlePassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const values = new Uint32Array(4);
