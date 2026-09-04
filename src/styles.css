@@ -2784,6 +2784,8 @@ textarea {
   background: rgb(11 16 22 / 34%);
   box-shadow: 0 18px 50px rgb(0 0 0 / 24%), inset 0 1px 0 rgb(255 255 255 / 12%);
   backdrop-filter: blur(4px) saturate(120%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 28%, #000 100%);
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 28%, #000 100%);
 }
 
 .hero-danmaku {
