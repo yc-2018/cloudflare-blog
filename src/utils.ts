@@ -58,6 +58,19 @@ export function toTagInput(tags: { name: string }[]) {
   return tags.map((tag) => tag.name).join(", ");
 }
 
+/** Builds a compact plain-text excerpt from the first part of Markdown content. */
+export function excerptFromContent(content: string, maxLength = 200) {
+  const plainText = content
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[#>*_~`]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  return plainText.slice(0, maxLength).trim();
+}
+
 export function articleToInput(article: {
   title: string;
   excerpt: string;

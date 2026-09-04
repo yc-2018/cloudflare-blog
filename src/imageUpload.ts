@@ -11,12 +11,21 @@ const imageHostFailureStorageKey = "blog:imageHostFailures"; // Browser key for 
 const imageHostFailureCooldownMs = 30 * 60 * 1000; // Time before a failed provider is tried again.
 const webpMaxDimension = 2560; // Maximum output width or height after browser-side resizing.
 const webpQuality = 0.86; // WebP quality chosen for readable screenshots and article photos.
+const coverMaxDimension = 1600; // Cover images are displayed in a bounded card, so a smaller maximum is sufficient.
+const coverWebpQuality = 0.8; // Cover quality trades a little detail for a smaller upload size.
 
 export type ImageHostFailures = Partial<Record<ImageHostProvider, number>>;
 
 export interface PreparedImage {
   file: File;
   convertedToWebp: boolean;
+  optimized: boolean;
+}
+
+interface ImagePreparationOptions {
+  maxDimension?: number;
+  quality?: number;
+  reencodeWebp?: boolean;
 }
 
 export interface ImageLinkConversion {
@@ -71,38 +80,48 @@ function isImageUrl(value: string) {
 }
 
 /** Converts pasted static images to bounded WebP while preserving GIF animation. */
-export async function prepareImageForUpload(file: File): Promise<PreparedImage> {
-  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.type === "image/webp") {
-    return { file, convertedToWebp: false };
+export async function prepareImageForUpload(file: File, options: ImagePreparationOptions = {}): Promise<PreparedImage> {
+  const maxDimension = options.maxDimension ?? webpMaxDimension; // Maximum width or height for the prepared image.
+  const quality = options.quality ?? webpQuality; // WebP encoder quality for the prepared image.
+  const shouldReencodeWebp = options.reencodeWebp ?? false; // Whether an existing WebP should also be recompressed.
+
+  if (!file.type.startsWith("image/") || file.type === "image/gif" || (file.type === "image/webp" && !shouldReencodeWebp)) {
+    return { file, convertedToWebp: false, optimized: false };
   }
 
   try {
     const bitmap = await createImageBitmap(file);
-    const scale = Math.min(1, webpMaxDimension / Math.max(bitmap.width, bitmap.height)); // Resize ratio for oversized images.
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height)); // Resize ratio that never enlarges a source image.
     const canvas = document.createElement("canvas");
     canvas.width = Math.max(1, Math.round(bitmap.width * scale));
     canvas.height = Math.max(1, Math.round(bitmap.height * scale));
     const context = canvas.getContext("2d");
     if (!context) {
       bitmap.close();
-      return { file, convertedToWebp: false };
+      return { file, convertedToWebp: false, optimized: false };
     }
 
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
     bitmap.close();
-    const blob = await canvasToBlob(canvas, "image/webp", webpQuality);
+    const blob = await canvasToBlob(canvas, "image/webp", quality);
     if (!blob) {
-      return { file, convertedToWebp: false };
+      return { file, convertedToWebp: false, optimized: false };
     }
 
     const baseName = file.name.replace(/\.[^.]+$/, "") || "pasted-image";
     return {
       file: new File([blob], `${baseName}.webp`, { type: "image/webp" }),
-      convertedToWebp: true
+      convertedToWebp: true,
+      optimized: true
     };
   } catch {
-    return { file, convertedToWebp: false };
+    return { file, convertedToWebp: false, optimized: false };
   }
+}
+
+/** Prepares a cover image with a card-sized bound and recompresses existing WebP files too. */
+export function prepareCoverImageForUpload(file: File) {
+  return prepareImageForUpload(file, { maxDimension: coverMaxDimension, quality: coverWebpQuality, reencodeWebp: true });
 }
 
 /** Uploads through healthy providers in priority order and records failures locally. */

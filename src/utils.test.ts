@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDateTime, parseTags, sampleMarkdown, toTagInput } from "./utils";
+import { excerptFromContent, formatDateTime, parseTags, sampleMarkdown, toTagInput } from "./utils";
 
 describe("tag helpers", () => {
   it("parses comma and Chinese comma separated tags", () => {
@@ -30,5 +30,19 @@ describe("new article Markdown example", () => {
     expect(content).toContain("> 这是一段引用");
     expect(content).toContain("~~删除线~~");
     expect(content).toContain("- [x] 写下想法");
+  });
+});
+
+describe("excerpt helpers", () => {
+  it("extracts readable text from Markdown and limits it to 200 characters", () => {
+    const content = `# 标题\n\n这是 **正文**，包含一个[链接](https://example.com)。\n\n${"后".repeat(240)}`;
+
+    const excerpt = excerptFromContent(content);
+    expect(excerpt).toContain("标题 这是 正文，包含一个链接。");
+    expect(excerpt).toHaveLength(200);
+  });
+
+  it("ignores fenced code when building an excerpt", () => {
+    expect(excerptFromContent("```ts\nconst hidden = true;\n```\n正文内容")).toBe("正文内容");
   });
 });

@@ -69,6 +69,7 @@ import type {
 import {
   articleToInput,
   emptyArticleInput,
+  excerptFromContent,
   formatArticleTimeTitle,
   formatDate,
   formatDateTime,
@@ -78,6 +79,7 @@ import {
   convertStandaloneImageLinks,
   imageHostLabels,
   markdownImage,
+  prepareCoverImageForUpload,
   prepareImageForUpload,
   uploadImageWithFallback
 } from "./imageUpload";
@@ -115,17 +117,16 @@ function selectHomeBackground() {
   return homeBackgrounds[Math.floor(Math.random() * homeBackgrounds.length)] ?? "/hero-night.jpg";
 }
 
-/** Creates a random order of initial offsets so tracks enter in a different order each visit. */
+/** Creates randomized initial phases and speeds so each danmaku lane starts visibly and loops seamlessly. */
 function createDanmakuEntryProfiles() {
-  const offsets = [0, 100, 200, 300, 400];
-  for (let index = offsets.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(Math.random() * (index + 1));
-    [offsets[index], offsets[swapIndex]] = [offsets[swapIndex], offsets[index]];
-  }
-  return offsets.map((offset) => ({
-    shift: offset + Math.floor(Math.random() * 41) - 20,
-    duration: 30 + (offset / 100) * 6
-  }));
+  return Array.from({ length: 5 }, () => {
+    const duration = 30 + Math.floor(Math.random() * 25); // Seconds for one complete repeated danmaku cycle.
+    const initialProgress = 0.16 + Math.random() * 0.18; // Initial cycle progress keeps each lane visibly staggered.
+    return {
+      delay: -(duration * initialProgress),
+      duration
+    };
+  });
 }
 
 const markdownSanitizeSchema: RehypeSanitizeOptions = {
@@ -1561,6 +1562,7 @@ export function App() {
 
           {view === "editor" && authenticated && (
             <Editor
+              key={editingSlug ?? "new-article"}
               draft={draft}
               availableTags={tagOptions}
               editing={Boolean(editingSlug)}
@@ -2050,7 +2052,7 @@ function ArticleList(props: {
                 {article.pinnedAt && <span className="article-pin-badge"><Pin size={14} />置顶</span>}
                 {article.title}
               </h2>
-              {article.excerpt && <p>{article.excerpt}</p>}
+              {article.excerpt && <p className="article-excerpt">{article.excerpt}</p>}
               {article.searchSnippet && (
                 <p className="search-snippet">
                   <span className="search-snippet-label">正文命中</span>
@@ -2139,12 +2141,12 @@ function HeroLanding(props: {
         <div className="hero-danmaku">
           {Array.from({ length: 5 }, (_, trackIndex) => {
             const trackLines = homeDanmaku.filter((_, lineIndex) => lineIndex % 5 === trackIndex); // Messages assigned to this scrolling lane.
-            const profile = entryProfiles[trackIndex] ?? { shift: 0, duration: 30 }; // Entry profile assigned to this lane.
+            const profile = entryProfiles[trackIndex] ?? { delay: -8, duration: 30 }; // Entry profile assigned to this lane.
             return (
               <div
                 className="hero-danmaku-track"
                 key={`track-${trackIndex}`}
-                style={{ "--entry-shift": `${profile.shift}px`, "--entry-duration": `${profile.duration}s` } as CSSProperties}
+                style={{ "--entry-delay": `${profile.delay}s`, "--entry-duration": `${profile.duration}s` } as CSSProperties}
               >
                 {[0, 1].map((copyIndex) => (
                   <div className="hero-danmaku-group" key={`group-${copyIndex}`}>
@@ -2288,7 +2290,7 @@ function DeletedArticleList(props: {
                 aria-label={`查看文章 ${article.title}`}
               >
                 <h2>{article.title}</h2>
-                {article.excerpt && <p>{article.excerpt}</p>}
+                {article.excerpt && <p className="article-excerpt">{article.excerpt}</p>}
                 <TagList tags={article.tags} />
                 <span className="article-row-meta">
                   <span className="article-date" title={formatArticleTimeTitle(article.createdAt, article.updatedAt)}>
@@ -2831,12 +2833,22 @@ function Editor(props: {
   onCancel: () => void;
 }) {
   const [uploadingTarget, setUploadingTarget] = useState<"cover" | "content" | "">("");
+  const [autoExcerpt, setAutoExcerpt] = useState(() => !props.draft.excerpt.trim()); // Whether the excerpt follows the article body.
   const draftRef = useRef(props.draft);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     draftRef.current = props.draft;
   }, [props.draft]);
+
+  useEffect(() => {
+    if (autoExcerpt && !props.draft.excerpt.trim()) {
+      const generatedExcerpt = excerptFromContent(props.draft.content);
+      if (generatedExcerpt) {
+        updateDraft({ ...props.draft, excerpt: generatedExcerpt });
+      }
+    }
+  }, [autoExcerpt]);
 
   /** Updates the draft and its synchronous ref used by asynchronous uploads. */
   function updateDraft(nextDraft: ArticleInput) {
@@ -2857,10 +2869,10 @@ function Editor(props: {
 
     setUploadingTarget("cover");
     try {
-      const prepared = await prepareImageForUpload(file);
+      const prepared = await prepareCoverImageForUpload(file);
       const result = await uploadImageWithFallback(prepared.file);
       setField("coverImageUrl", result.url);
-      props.onNotice(`${prepared.convertedToWebp ? "已转为 WebP，" : ""}图片已上传到 ${imageHostLabels[result.provider]}`);
+      props.onNotice(`${prepared.optimized ? `封面已压缩${prepared.convertedToWebp ? "并转为 WebP" : ""}，` : ""}图片已上传到 ${imageHostLabels[result.provider]}`);
     } catch (error) {
       props.onError(asErrorMessage(error));
     } finally {
@@ -2923,9 +2935,24 @@ function Editor(props: {
       return;
     }
 
-    setField("content", result.content);
+    handleContentChange(result.content);
     props.onNotice(`已将 ${result.convertedCount} 个图片链接转为 Markdown`);
     window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
+  }
+
+  /** Updates the excerpt manually and disables automatic body-based generation. */
+  function handleExcerptChange(value: string) {
+    setAutoExcerpt(false);
+    setField("excerpt", value);
+  }
+
+  /** Keeps the generated excerpt in sync while automatic mode is enabled. */
+  function handleContentChange(value: string) {
+    const nextDraft = { ...draftRef.current, content: value };
+    if (autoExcerpt) {
+      nextDraft.excerpt = excerptFromContent(value);
+    }
+    updateDraft(nextDraft);
   }
 
   return (
@@ -2960,12 +2987,32 @@ function Editor(props: {
               />
             </label>
             <label>
-              摘要
+              <span className="editor-field-label-row">
+                <span>摘要</span>
+                <span className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={autoExcerpt}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      if (enabled && draftRef.current.excerpt.trim()) {
+                        setAutoExcerpt(false);
+                        return;
+                      }
+                      setAutoExcerpt(enabled);
+                      if (enabled) {
+                        setField("excerpt", excerptFromContent(draftRef.current.content));
+                      }
+                    }}
+                  />
+                  取正文前 200 字
+                </span>
+              </span>
               <textarea
                 maxLength={240}
                 rows={3}
                 value={props.draft.excerpt}
-                onChange={(event) => setField("excerpt", event.target.value)}
+                onChange={(event) => handleExcerptChange(event.target.value)}
                 placeholder="一两句话概括这篇文章"
               />
             </label>
@@ -3035,7 +3082,7 @@ function Editor(props: {
                 ref={contentTextareaRef}
                 required
                 value={props.draft.content}
-                onChange={(event) => setField("content", event.target.value)}
+                onChange={(event) => handleContentChange(event.target.value)}
                 onPaste={handleContentPaste}
                 spellCheck={false}
                 disabled={Boolean(uploadingTarget)}

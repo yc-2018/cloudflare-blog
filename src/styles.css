@@ -627,6 +627,13 @@ button {
   color: #5d645b;
 }
 
+.article-excerpt {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .article-main .search-snippet {
   display: flex;
   flex-wrap: wrap;
@@ -1572,6 +1579,29 @@ label {
   color: #343b35;
   font-size: 13px;
   font-weight: 800;
+}
+
+.editor-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #687269;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.checkbox-label input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: #5f7f68;
 }
 
 .field-label {
@@ -2773,7 +2803,7 @@ textarea {
   left: 0;
   display: flex;
   width: max-content;
-  animation: hero-danmaku-enter var(--entry-duration, 60s) linear both, hero-danmaku-run 30s linear var(--entry-duration, 60s) infinite;
+  animation: hero-danmaku-run var(--entry-duration, 42s) linear var(--entry-delay, -8s) infinite;
 }
 
 .hero-danmaku-track:nth-child(1) { top: 8%; }
@@ -3061,11 +3091,6 @@ textarea {
 @keyframes hero-danmaku-run {
   from { transform: translateX(0); }
   to { transform: translateX(-50%); }
-}
-
-@keyframes hero-danmaku-enter {
-  from { transform: translateX(calc(50% + var(--entry-shift, 0px))); }
-  to { transform: translateX(0); }
 }
 
 @keyframes hero-stage-in {

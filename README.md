@@ -234,7 +234,8 @@ node -e "console.log(crypto.randomUUID() + crypto.randomUUID())"
 
 管理员在文章 Markdown 编辑框或“列表图片”输入框里粘贴图片时，浏览器会先处理图片，再调用 Pages Function 上传：
 
-- PNG、JPEG 等静态图片会转换为 WebP，最长边限制为 2560px，质量为 0.86。
+- Markdown 正文中的 PNG、JPEG 等静态图片会转换为 WebP，最长边限制为 2560px，质量为 0.86。
+- “列表图片”封面会单独压缩为 WebP，最长边限制为 1600px，质量为 0.8，且不会放大原图。
 - GIF 保留原格式，避免动画丢失。
 - 转换后的图片最大为 10 MB。
 - 图床顺序为 ImgBB、Pixhost。
