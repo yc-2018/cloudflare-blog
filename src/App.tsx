@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import ReactMarkdown, { defaultUrlTransform } from "react-markdown";
+import React from "react";
+import ReactMarkdown, { defaultUrlTransform, type Components } from "react-markdown";
 import { createPortal } from "react-dom";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
@@ -19,6 +20,7 @@ import {
   EyeOff,
   FilePenLine,
   ImageIcon,
+  Keyboard,
   Lock,
   LogIn,
   LogOut,
@@ -53,6 +55,7 @@ import {
   searchArticles,
   toggleArticlePinned,
   updateArticle,
+  updateMessage,
   updateMessageStatus,
   ApiRequestError
 } from "./api";
@@ -81,8 +84,10 @@ import {
   markdownImage,
   prepareCoverImageForUpload,
   prepareImageForUpload,
+  rehostImageWithFallback,
   uploadImageWithFallback
 } from "./imageUpload";
+import { parsePastedHtml, type PastedContent } from "./htmlPaste";
 import { ArticleViewCount } from "./ArticleViewCount";
 import { StatisticsPage } from "./StatisticsPage";
 import type { Options as RehypeSanitizeOptions } from "rehype-sanitize";
@@ -208,6 +213,8 @@ export function App() {
   const [guestbookDraft, setGuestbookDraft] = useState<GuestbookInput>(defaultGuestbookDraft);
   const [guestbookCaptcha, setGuestbookCaptcha] = useState<GuestbookCaptcha | null>(null);
   const [guestbookReplyTarget, setGuestbookReplyTarget] = useState<GuestbookMessage | null>(null);
+  const [guestbookEditingId, setGuestbookEditingId] = useState<number | null>(null);
+  const [guestbookEditContent, setGuestbookEditContent] = useState("");
   const [guestbookLoading, setGuestbookLoading] = useState(false);
   const [guestbookSubmitting, setGuestbookSubmitting] = useState(false);
   const [guestbookCaptchaRefreshing, setGuestbookCaptchaRefreshing] = useState(false);
@@ -1278,6 +1285,27 @@ export function App() {
     }
   }
 
+  /** 管理员编辑评论内容。 */
+  async function editGuestbookMessage(id: number, content: string, articleId: number | null = null) {
+    if (guestbookActionRef.current) return;
+    const actionKey = `edit-${id}`;
+    guestbookActionRef.current = actionKey;
+    setGuestbookAction(actionKey);
+    setError("");
+    try {
+      await updateMessage(id, content);
+      setMessage("评论已更新");
+      setGuestbookEditingId(null);
+      setGuestbookEditContent("");
+      await refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
+    } catch (caught) {
+      setError(asErrorMessage(caught));
+    } finally {
+      guestbookActionRef.current = "";
+      setGuestbookAction("");
+    }
+  }
+
   function currentArticlePassword(articleId: number) {
     if (activeArticle?.id !== articleId) return "";
     return new URLSearchParams(window.location.search).get(passwordQueryKey) ?? "";
@@ -1540,12 +1568,15 @@ export function App() {
                   submitting={guestbookSubmitting}
                   captchaRefreshing={guestbookCaptchaRefreshing}
                   action={guestbookAction}
+                  editingId={guestbookEditingId}
+                  editContent={guestbookEditContent}
                   onCancelReply={() => {
                     setGuestbookReplyTarget(null);
                     setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null }));
                   }}
                   onStatus={(id, status, invalid) => void changeGuestbookStatus(id, status, invalid, activeArticle.id)}
                   onDelete={(id) => void removeGuestbookMessage(id, activeArticle.id)}
+                  onEdit={(id, content) => void editGuestbookMessage(id, content, activeArticle.id)}
                   onDraftChange={setGuestbookDraft}
                   onRefreshCaptcha={() => void refreshGuestbookCaptcha()}
                   onReply={(replyTarget) => {
@@ -1554,6 +1585,15 @@ export function App() {
                     document.getElementById("article-comments")?.scrollIntoView({ behavior: "smooth" });
                   }}
                   onSubmit={(event) => void submitGuestbookMessage(event, activeArticle.id)}
+                  onEditStart={(id, content) => {
+                    setGuestbookEditingId(id);
+                    setGuestbookEditContent(content);
+                  }}
+                  onEditCancel={() => {
+                    setGuestbookEditingId(null);
+                    setGuestbookEditContent("");
+                  }}
+                  onEditContentChange={setGuestbookEditContent}
                 />
               }
               />
@@ -1594,12 +1634,15 @@ export function App() {
               submitting={guestbookSubmitting}
               captchaRefreshing={guestbookCaptchaRefreshing}
               action={guestbookAction}
+              editingId={guestbookEditingId}
+              editContent={guestbookEditContent}
               onCancelReply={() => {
                 setGuestbookReplyTarget(null);
                 setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null }));
               }}
               onStatus={(id, status, invalid) => void changeGuestbookStatus(id, status, invalid)}
               onDelete={(id) => void removeGuestbookMessage(id)}
+              onEdit={(id, content) => void editGuestbookMessage(id, content)}
               onDraftChange={setGuestbookDraft}
               onRefreshCaptcha={() => void refreshGuestbookCaptcha()}
               onReply={(replyTarget) => {
@@ -1608,6 +1651,15 @@ export function App() {
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
               onSubmit={submitGuestbookMessage}
+              onEditStart={(id, content) => {
+                setGuestbookEditingId(id);
+                setGuestbookEditContent(content);
+              }}
+              onEditCancel={() => {
+                setGuestbookEditingId(null);
+                setGuestbookEditContent("");
+              }}
+              onEditContentChange={setGuestbookEditContent}
             />
           )}
         </section>
@@ -1644,13 +1696,19 @@ function Guestbook(props: {
   submitting: boolean;
   captchaRefreshing: boolean;
   action: string;
+  editingId: number | null;
+  editContent: string;
   onCancelReply: () => void;
   onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
+  onEdit: (id: number, content: string) => void;
   onDraftChange: (draft: GuestbookInput) => void;
   onRefreshCaptcha: () => void;
   onReply: (message: GuestbookMessage) => void;
   onSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onEditStart: (id: number, content: string) => void;
+  onEditCancel: () => void;
+  onEditContentChange: (content: string) => void;
 }) {
   const canSubmit = props.authenticated || props.cooldown === 0;
   const articleMode = props.mode === "article";
@@ -1770,9 +1828,15 @@ function Guestbook(props: {
               authenticated={props.authenticated}
               key={message.id}
               message={message}
+              editingId={props.editingId}
+              editContent={props.editContent}
               onStatus={props.onStatus}
               onDelete={props.onDelete}
               onReply={props.onReply}
+              onEditStart={props.onEditStart}
+              onEditCancel={props.onEditCancel}
+              onEditContentChange={props.onEditContentChange}
+              onEdit={props.onEdit}
             />
           ))}
       </section>
@@ -1784,14 +1848,21 @@ function GuestbookMessageItem(props: {
   action: string;
   authenticated: boolean;
   message: GuestbookMessage;
+  editingId: number | null;
+  editContent: string;
   onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
   onReply: (message: GuestbookMessage) => void;
+  onEditStart: (id: number, content: string) => void;
+  onEditCancel: () => void;
+  onEditContentChange: (content: string) => void;
+  onEdit: (id: number, content: string) => void;
 }) {
   const deleteActionKey = `delete-${props.message.id}`;
   const statusChanging = props.action === `status-${props.message.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
+  const isEditing = props.editingId === props.message.id;
 
   return (
     <article className={props.message.invalid ? "message-card message-invalid" : "message-card"}>
@@ -1809,6 +1880,16 @@ function GuestbookMessageItem(props: {
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.message)}>
             回复
           </button>
+          {props.authenticated && !isEditing && (
+            <button
+              className="text-button ghost"
+              type="button"
+              onClick={() => props.onEditStart(props.message.id, props.message.content)}
+              disabled={actionBusy}
+            >
+              编辑
+            </button>
+          )}
           {props.authenticated && (
             <button
               className="icon-button subtle"
@@ -1835,7 +1916,36 @@ function GuestbookMessageItem(props: {
           )}
         </div>
       </div>
-      <CommentContent content={props.message.content} />
+      {isEditing ? (
+        <div className="message-edit-form">
+          <textarea
+            value={props.editContent}
+            onChange={(e) => props.onEditContentChange(e.target.value)}
+            maxLength={500}
+            rows={5}
+            autoFocus
+          />
+          <div className="message-edit-actions">
+            <button
+              className="text-button ghost"
+              type="button"
+              onClick={props.onEditCancel}
+            >
+              取消
+            </button>
+            <button
+              className="text-button primary"
+              type="button"
+              onClick={() => props.onEdit(props.message.id, props.editContent)}
+              disabled={!props.editContent.trim()}
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      ) : (
+        <CommentContent content={props.message.content} />
+      )}
       {props.message.replies.length > 0 && (
         <div className="message-replies">
           {props.message.replies.map((reply) => (
@@ -1844,9 +1954,15 @@ function GuestbookMessageItem(props: {
               authenticated={props.authenticated}
               key={reply.id}
               reply={reply}
+              editingId={props.editingId}
+              editContent={props.editContent}
               onStatus={props.onStatus}
               onDelete={props.onDelete}
               onReply={props.onReply}
+              onEditStart={props.onEditStart}
+              onEditCancel={props.onEditCancel}
+              onEditContentChange={props.onEditContentChange}
+              onEdit={props.onEdit}
             />
           ))}
         </div>
@@ -1859,14 +1975,21 @@ function GuestbookReplyItem(props: {
   action: string;
   authenticated: boolean;
   reply: GuestbookMessage;
+  editingId: number | null;
+  editContent: string;
   onStatus: (id: number, status: "pending" | "approved", invalid: boolean) => void;
   onDelete: (id: number) => void;
   onReply: (message: GuestbookMessage) => void;
+  onEditStart: (id: number, content: string) => void;
+  onEditCancel: () => void;
+  onEditContentChange: (content: string) => void;
+  onEdit: (id: number, content: string) => void;
 }) {
   const deleteActionKey = `delete-${props.reply.id}`;
   const statusChanging = props.action === `status-${props.reply.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
+  const isEditing = props.editingId === props.reply.id;
 
   return (
     <article className={props.reply.invalid ? "message-reply message-invalid" : "message-reply"}>
@@ -1885,6 +2008,16 @@ function GuestbookReplyItem(props: {
           <button className="text-button ghost" type="button" onClick={() => props.onReply(props.reply)}>
             回复
           </button>
+          {props.authenticated && !isEditing && (
+            <button
+              className="text-button ghost"
+              type="button"
+              onClick={() => props.onEditStart(props.reply.id, props.reply.content)}
+              disabled={actionBusy}
+            >
+              编辑
+            </button>
+          )}
           {props.authenticated && (
             <button
               className="icon-button subtle"
@@ -1911,30 +2044,67 @@ function GuestbookReplyItem(props: {
           )}
         </div>
       </div>
-      <CommentContent content={props.reply.content} />
+      {isEditing ? (
+        <div className="message-edit-form">
+          <textarea
+            value={props.editContent}
+            onChange={(e) => props.onEditContentChange(e.target.value)}
+            maxLength={500}
+            rows={5}
+            autoFocus
+          />
+          <div className="message-edit-actions">
+            <button
+              className="text-button ghost"
+              type="button"
+              onClick={props.onEditCancel}
+            >
+              取消
+            </button>
+            <button
+              className="text-button primary"
+              type="button"
+              onClick={() => props.onEdit(props.reply.id, props.editContent)}
+              disabled={!props.editContent.trim()}
+            >
+              保存
+            </button>
+          </div>
+        </div>
+      ) : (
+        <CommentContent content={props.reply.content} />
+      )}
     </article>
   );
 }
 
-/** 渲染轻量的评论 Markdown，同时拒绝 HTML、标题、表格和不安全的图片。 */
-export function CommentContent(props: { content: string }) {
-  /** 将图片限制为 HTTPS，同时应用 Markdown 库的安全链接协议过滤。 */
-  function transformCommentUrl(url: string, key: string) {
-    if (key === "href") {
-      return defaultUrlTransform(url);
-    }
-
-    if (key !== "src") {
-      return "";
-    }
-
-    try {
-      return new URL(url).protocol === "https:" ? url : "";
-    } catch {
-      return "";
-    }
+/** 将图片限制为 HTTPS，同时应用 Markdown 库的安全链接协议过滤。 */
+function transformCommentUrl(url: string, key: string) {
+  if (key === "href") {
+    return defaultUrlTransform(url);
   }
 
+  if (key !== "src") {
+    return "";
+  }
+
+  try {
+    return new URL(url).protocol === "https:" ? url : "";
+  } catch {
+    return "";
+  }
+}
+
+// 组件映射必须保持同一个引用：新的函数引用会被 React 当成新组件类型，从而重建 <img> 节点并让图片重新加载。
+const commentMarkdownComponents: Components = {
+  a: ({ node: _node, ...linkProps }) => <a {...linkProps} target="_blank" rel="noopener noreferrer" />,
+  img: ({ node: _node, ...imageProps }) => (
+    <img {...imageProps} className="comment-image" loading="lazy" referrerPolicy="no-referrer" />
+  )
+};
+
+/** 渲染轻量的评论 Markdown，同时拒绝 HTML、标题、表格和不安全的图片。 */
+export function CommentContent(props: { content: string }) {
   return (
     <div className="message-content">
       <ReactMarkdown
@@ -1943,12 +2113,7 @@ export function CommentContent(props: { content: string }) {
         skipHtml
         unwrapDisallowed
         urlTransform={transformCommentUrl}
-        components={{
-          a: ({ node: _node, ...linkProps }) => <a {...linkProps} target="_blank" rel="noopener noreferrer" />,
-          img: ({ node: _node, ...imageProps }) => (
-            <img {...imageProps} className="comment-image" loading="lazy" referrerPolicy="no-referrer" />
-          )
-        }}
+        components={commentMarkdownComponents}
       >
         {props.content}
       </ReactMarkdown>
@@ -2586,20 +2751,26 @@ export function MarkdownRenderer(props: { content: string }) {
     };
   }, [closeLightbox, lightboxImage]);
 
+  // 组件映射必须保持同一个引用：新的函数引用会被 React 当成新组件类型，从而重建 <img> 节点并让图片重新加载。
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      a: ({ children, node: _node, ...anchorProps }) => (
+        <a {...anchorProps} target="_blank" rel="noopener noreferrer">
+          {children}
+        </a>
+      ),
+      img: ({ node: _node, ...imageProps }) => <MarkdownImage {...imageProps} onOpen={openLightboxImage} />,
+      pre: ({ children }) => <CodeBlock>{children}</CodeBlock>
+    }),
+    [openLightboxImage]
+  );
+
   return (
     <>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkSoftLineBreaks, remarkHighlightMark, remarkHighlightMarkElement]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema], [rehypeHighlight, { detect: true }]]}
-        components={{
-          a: ({ children, node: _node, ...anchorProps }) => (
-            <a {...anchorProps} target="_blank" rel="noopener noreferrer">
-              {children}
-            </a>
-          ),
-          img: ({ node: _node, ...imageProps }) => <MarkdownImage {...imageProps} onOpen={openLightboxImage} />,
-          pre: ({ children }) => <CodeBlock>{children}</CodeBlock>
-        }}
+        components={markdownComponents}
       >
         {props.content}
       </ReactMarkdown>
@@ -2674,7 +2845,7 @@ interface MarkdownImageProps {
 }
 
 /** 渲染一张 Markdown 图片，可在无障碍的全屏预览中打开。 */
-function MarkdownImage(props: MarkdownImageProps) {
+const MarkdownImage = React.memo(function MarkdownImage(props: MarkdownImageProps) {
   const alt = props.alt ?? ""; // 图片无法加载时显示的替代文本。
   const src = props.src ?? ""; // Markdown 图片的源 URL。
 
@@ -2706,10 +2877,10 @@ function MarkdownImage(props: MarkdownImageProps) {
         }
       }}
     >
-      <img src={src} alt={alt} title={props.title} />
+      <img src={src} alt={alt} title={props.title} loading="lazy" />
     </span>
   );
-}
+});
 
 interface MarkdownAstNode {
   type?: string;
@@ -2821,6 +2992,46 @@ function extractText(value: React.ReactNode): string {
   return "";
 }
 
+/** Ctrl/Cmd 快捷键到 Markdown 包裹语法的映射：[前缀, 后缀, 无选区时的占位符]。 */
+const markdownShortcuts: Record<string, [before: string, after: string, placeholder: string]> = {
+  b: ["**", "**", "加粗文字"],
+  i: ["*", "*", "斜体文字"],
+  k: ["[", "](url)", "链接文字"]
+};
+
+/** 选中文本后按下这些符号时，用符号包裹选区而不是替换选区。 */
+const wrapPairs: Record<string, string> = {
+  "(": ")",
+  "[": "]",
+  "{": "}",
+  '"': '"',
+  "'": "'",
+  "`": "`",
+  "*": "*",
+  _: "_"
+};
+
+/**
+ * 必须写在行首才生效的 Markdown 语法：prefix 按选区内非空行的序号生成前缀，
+ * placeholder 用于光标停在空行时补入的示例文字。
+ */
+const linePrefixFormats: Record<string, { prefix: (ordinal: number) => string; placeholder: string }> = {
+  h1: { prefix: () => "# ", placeholder: "一级标题" },
+  h2: { prefix: () => "## ", placeholder: "二级标题" },
+  h3: { prefix: () => "### ", placeholder: "三级标题" },
+  quote: { prefix: () => "> ", placeholder: "引用文字" },
+  ul: { prefix: () => "- ", placeholder: "列表项" },
+  ol: { prefix: (ordinal) => `${ordinal}. `, placeholder: "列表项" }
+};
+
+/** 可以直接包裹选区、不受所在行位置影响的行内 Markdown 语法。 */
+const inlineFormats: Record<string, [before: string, after: string, placeholder: string]> = {
+  bold: ["**", "**", "加粗文字"],
+  italic: ["*", "*", "斜体文字"],
+  code: ["`", "`", "代码"],
+  link: ["[", "](url)", "链接文字"]
+};
+
 function Editor(props: {
   draft: ArticleInput;
   availableTags: TagType[];
@@ -2834,6 +3045,7 @@ function Editor(props: {
 }) {
   const [uploadingTarget, setUploadingTarget] = useState<"cover" | "content" | "">("");
   const [autoExcerpt, setAutoExcerpt] = useState(() => !props.draft.excerpt.trim()); // 摘要是否跟随文章正文自动生成。
+  const [shortcutsOpen, setShortcutsOpen] = useState(false); // 是否展开编辑器快捷键说明弹窗。
   const draftRef = useRef(props.draft);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -2880,6 +3092,47 @@ function Editor(props: {
     }
   }
 
+  /**
+   * 还原正文文本域的选区与滚动位置。
+   * React 重设受控 value 后浏览器会把光标推到文末并滚动过去，必须在下一帧重新指定。
+   */
+  function restoreContentSelection(scrollTop: number, selectionStart: number, selectionEnd = selectionStart, refocus = true) {
+    window.requestAnimationFrame(() => {
+      const textarea = contentTextareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      if (refocus) {
+        textarea.focus(); // focus() 会滚动到当前光标，因此必须放在还原 scrollTop 之前。
+      }
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+      textarea.scrollTop = scrollTop;
+    });
+  }
+
+  /** 把正文里的上传占位标记替换成最终内容，并保持用户当前的光标与滚动位置。 */
+  function replaceUploadMarker(marker: string, replacement: string) {
+    const content = draftRef.current.content;
+    const markerIndex = content.indexOf(marker); // 占位标记的位置，上传期间用户可能已在别处继续编辑。
+    if (markerIndex < 0) {
+      return;
+    }
+
+    const textarea = contentTextareaRef.current;
+    const scrollTop = textarea?.scrollTop ?? 0;
+    const caret = textarea?.selectionStart ?? markerIndex + marker.length; // 替换前用户所在的光标位置。
+    const caretAfter =
+      caret <= markerIndex
+        ? caret // 光标在标记之前，位置不受影响。
+        : caret >= markerIndex + marker.length
+          ? caret + replacement.length - marker.length // 替换发生在光标之前，按长度差平移。
+          : markerIndex + replacement.length; // 光标原本落在标记内部，移到替换后的内容末尾。
+    const active = document.activeElement; // 上传期间正文文本域被禁用，用户可能已切换到其它输入框，此时不应抢回焦点。
+
+    handleContentChange(`${content.slice(0, markerIndex)}${replacement}${content.slice(markerIndex + marker.length)}`);
+    restoreContentSelection(scrollTop, caretAfter, caretAfter, !active || active === document.body || active === textarea);
+  }
+
   /** 插入一个临时的 Markdown 占位标记，并在上传完成后替换为图片 URL。 */
   async function uploadContentImage(file: File, selectionStart: number, selectionEnd: number) {
     if (uploadingTarget) {
@@ -2890,20 +3143,21 @@ function Editor(props: {
     const markerId = `uploading-${crypto.randomUUID()}`; // 在异步状态更新过程中保持唯一的占位标记。
     const marker = markdownImage(markerId, "图片上传中…");
     const content = draftRef.current.content;
+    const scrollTop = contentTextareaRef.current?.scrollTop ?? 0; // 插入占位标记会重设 value，先记住原滚动位置。
     updateDraft({ ...draftRef.current, content: `${content.slice(0, selectionStart)}${marker}${content.slice(selectionEnd)}` });
+    restoreContentSelection(scrollTop, selectionStart + marker.length);
     setUploadingTarget("content");
 
     try {
       const prepared = await prepareImageForUpload(file);
       const result = await uploadImageWithFallback(prepared.file);
-      updateDraft({ ...draftRef.current, content: draftRef.current.content.replace(marker, markdownImage(result.url)) });
+      replaceUploadMarker(marker, markdownImage(result.url));
       props.onNotice(`${prepared.convertedToWebp ? "已转为 WebP，" : ""}图片已上传到 ${imageHostLabels[result.provider]}`);
     } catch (error) {
-      updateDraft({ ...draftRef.current, content: draftRef.current.content.replace(marker, "") });
+      replaceUploadMarker(marker, "");
       props.onError(asErrorMessage(error));
     } finally {
       setUploadingTarget("");
-      window.requestAnimationFrame(() => contentTextareaRef.current?.focus());
     }
   }
 
@@ -2920,11 +3174,58 @@ function Editor(props: {
   /** 从 Markdown 文本域中捕获图片，并记住其插入位置。 */
   function handleContentPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
     const image = clipboardImage(event.clipboardData);
-    if (!image) {
+    if (image) {
+      event.preventDefault();
+      void uploadContentImage(image, event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
       return;
     }
+
+    const html = event.clipboardData.getData("text/html");
+    if (!html) {
+      return;
+    }
+
+    const parsed = parsePastedHtml(html, () => markdownImage(`uploading-${crypto.randomUUID()}`, "图片上传中…"));
+    if (parsed.images.length === 0) {
+      return; // 不含图片时交给浏览器执行默认的纯文本粘贴，保留撤销历史。
+    }
+
     event.preventDefault();
-    void uploadContentImage(image, event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
+    if (uploadingTarget) {
+      props.onError("请等待当前图片上传完成");
+      return;
+    }
+    void pasteHtmlWithImages(parsed, event.currentTarget.selectionStart, event.currentTarget.selectionEnd);
+  }
+
+  /** 粘贴带图片的富文本：先插入正文与占位标记，再逐张把图片转存到项目图床。 */
+  async function pasteHtmlWithImages(parsed: PastedContent, selectionStart: number, selectionEnd: number) {
+    const content = draftRef.current.content;
+    updateContent(`${content.slice(0, selectionStart)}${parsed.text}${content.slice(selectionEnd)}`, selectionStart + parsed.text.length);
+
+    setUploadingTarget("content");
+    let rehostedCount = 0; // 成功转存到项目图床的图片数量。
+    try {
+      for (const image of parsed.images) {
+        let finalUrl = image.sourceUrl; // 转存失败时退回原始外链，至少不丢图。
+        try {
+          finalUrl = (await rehostImageWithFallback(image.sourceUrl)).url;
+          rehostedCount += 1;
+        } catch {
+          // 单张图片转存失败不应中断整篇文章的粘贴。
+        }
+        replaceUploadMarker(image.marker, markdownImage(finalUrl));
+      }
+    } finally {
+      setUploadingTarget("");
+    }
+
+    const failedCount = parsed.images.length - rehostedCount; // 仍然使用原始外链的图片数量。
+    props.onNotice(
+      failedCount === 0
+        ? `已粘贴正文，并转存 ${rehostedCount} 张图片`
+        : `已粘贴正文，${rehostedCount} 张图片已转存，${failedCount} 张转存失败仍使用原始链接`
+    );
   }
 
   /** 将正文中单独成行的图片 URL 转换为 Markdown 图片。 */
@@ -2953,6 +3254,125 @@ function Editor(props: {
       nextDraft.excerpt = excerptFromContent(value);
     }
     updateDraft(nextDraft);
+  }
+
+  /** 处理 Markdown 编辑快捷键：加粗、斜体、链接，以及成对符号包裹选区。 */
+  function handleContentKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
+    const textarea = event.currentTarget;
+    const hasSelection = textarea.selectionStart !== textarea.selectionEnd; // 是否存在待包裹的选区。
+
+    if (event.ctrlKey || event.metaKey) {
+      const shortcut = markdownShortcuts[event.key.toLowerCase()];
+      if (shortcut) {
+        event.preventDefault();
+        wrapSelection(shortcut[0], shortcut[1], shortcut[2]);
+      }
+      return;
+    }
+
+    // 选中文本后按下成对符号时包裹选区，而不是替换掉选中内容。
+    if (hasSelection && !event.altKey && wrapPairs[event.key]) {
+      event.preventDefault();
+      wrapSelection(event.key, wrapPairs[event.key], "");
+    }
+  }
+
+  /** 更新正文，并在受控 value 被重设后恢复选区与滚动位置。 */
+  function updateContent(value: string, selectionStart: number, selectionEnd = selectionStart) {
+    const scrollTop = contentTextareaRef.current?.scrollTop ?? 0; // 必须在触发重新渲染之前读取。
+    handleContentChange(value);
+    restoreContentSelection(scrollTop, selectionStart, selectionEnd);
+  }
+
+  /** 在选区两侧插入包裹符号，无选区时插入占位符并选中它。 */
+  function wrapSelection(before: string, after: string, placeholder: string) {
+    const textarea = contentTextareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const selectedText = value.slice(selectionStart, selectionEnd);
+    const textToInsert = selectedText || placeholder; // 被包裹的文本，无选区时退化为占位符。
+
+    updateContent(
+      `${value.slice(0, selectionStart)}${before}${textToInsert}${after}${value.slice(selectionEnd)}`,
+      selectionStart + before.length,
+      selectionStart + before.length + textToInsert.length
+    );
+  }
+
+  /**
+   * 为选区覆盖的每一整行添加行首前缀（标题、引用、列表）。
+   * 前缀写在行中间不会被 Markdown 解析，因此始终从行首开始；空行会被跳过，避免生成空列表项。
+   */
+  function prefixLines(createPrefix: (ordinal: number) => string, placeholder: string) {
+    const textarea = contentTextareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const rangeEnd = selectionEnd > selectionStart && value[selectionEnd - 1] === "\n" ? selectionEnd - 1 : selectionEnd; // 选区以换行结尾时不把下一行算进来。
+    const blockStart = value.lastIndexOf("\n", selectionStart - 1) + 1; // 选区首行的行首偏移。
+    const lineBreak = value.indexOf("\n", rangeEnd);
+    const blockEnd = lineBreak === -1 ? value.length : lineBreak; // 选区末行的行尾偏移。
+    const block = value.slice(blockStart, blockEnd);
+
+    if (!block.trim()) {
+      // 光标停在空行时补上占位文字并选中，否则只会留下一个孤立的行首符号。
+      const prefix = createPrefix(1);
+      updateContent(
+        `${value.slice(0, blockStart)}${prefix}${placeholder}${value.slice(blockEnd)}`,
+        blockStart + prefix.length,
+        blockStart + prefix.length + placeholder.length
+      );
+      return;
+    }
+
+    let ordinal = 0; // 选区内非空行的序号，供有序列表编号。
+    const prefixed = block
+      .split("\n")
+      .map((line) => (line.trim() ? `${createPrefix((ordinal += 1))}${line}` : line))
+      .join("\n");
+
+    updateContent(`${value.slice(0, blockStart)}${prefixed}${value.slice(blockEnd)}`, blockStart, blockStart + prefixed.length);
+  }
+
+  /**
+   * 插入代码块。两侧围栏必须各自独占一行，否则开头的 ``` 不生效，
+   * 结尾的 ``` 反而会被当成一个没有闭合的新代码块起点。
+   */
+  function insertCodeBlock() {
+    const textarea = contentTextareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const code = value.slice(selectionStart, selectionEnd) || "代码块"; // 被围栏包裹的代码，无选区时退化为占位符。
+    const leading = selectionStart === 0 || value[selectionStart - 1] === "\n" ? "" : "\n"; // 光标不在行首时补一个换行。
+    const trailing = selectionEnd === value.length || value[selectionEnd] === "\n" ? "" : "\n"; // 选区后面还有内容时补一个换行。
+    const codeStart = selectionStart + leading.length + 4; // 越过补入的换行与 "```\n" 之后，代码正文的起始偏移。
+
+    updateContent(
+      `${value.slice(0, selectionStart)}${leading}\`\`\`\n${code}\n\`\`\`${trailing}${value.slice(selectionEnd)}`,
+      codeStart,
+      codeStart + code.length
+    );
+  }
+
+  /** 按工具栏按钮插入对应的 Markdown 语法。 */
+  function insertMarkdown(format: string) {
+    const lineFormat = linePrefixFormats[format];
+    if (lineFormat) {
+      prefixLines(lineFormat.prefix, lineFormat.placeholder);
+      return;
+    }
+
+    if (format === "codeblock") {
+      insertCodeBlock();
+      return;
+    }
+
+    const inlineFormat = inlineFormats[format];
+    if (inlineFormat) {
+      wrapSelection(inlineFormat[0], inlineFormat[1], inlineFormat[2]);
+    }
   }
 
   return (
@@ -3070,6 +3490,53 @@ function Editor(props: {
               <div className="editor-compose-heading">
                 <label htmlFor="article-markdown-content">Markdown</label>
                 <div className="editor-compose-actions">
+                  <div className="editor-toolbar">
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("h1")} title="一级标题" aria-label="一级标题">
+                      H1
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("h2")} title="二级标题" aria-label="二级标题">
+                      H2
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("h3")} title="三级标题" aria-label="三级标题">
+                      H3
+                    </button>
+                    <span className="toolbar-divider" />
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("bold")} title="加粗 (Ctrl+B)" aria-label="加粗">
+                      <strong>B</strong>
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("italic")} title="斜体 (Ctrl+I)" aria-label="斜体">
+                      <em>I</em>
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("code")} title="行内代码" aria-label="行内代码">
+                      {'<>'}
+                    </button>
+                    <span className="toolbar-divider" />
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("link")} title="链接 (Ctrl+K)" aria-label="链接">
+                      🔗
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("quote")} title="引用" aria-label="引用">
+                      "
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("ul")} title="无序列表" aria-label="无序列表">
+                      •
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("ol")} title="有序列表" aria-label="有序列表">
+                      1.
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("codeblock")} title="代码块" aria-label="代码块">
+                      {'{ }'}
+                    </button>
+                    <span className="toolbar-divider" />
+                    <button
+                      className="toolbar-button"
+                      type="button"
+                      onClick={() => setShortcutsOpen(true)}
+                      title="快捷键说明"
+                      aria-label="快捷键说明"
+                    >
+                      <Keyboard size={15} />
+                    </button>
+                  </div>
                   <button className="text-button ghost editor-convert-button" type="button" onClick={convertImageLinks}>
                     <ImageIcon size={15} />
                     识别图片链接转md
@@ -3084,6 +3551,7 @@ function Editor(props: {
                 value={props.draft.content}
                 onChange={(event) => handleContentChange(event.target.value)}
                 onPaste={handleContentPaste}
+                onKeyDown={handleContentKeyDown}
                 spellCheck={false}
                 disabled={Boolean(uploadingTarget)}
               />
@@ -3098,7 +3566,63 @@ function Editor(props: {
           </div>
         </div>
       </div>
+      {shortcutsOpen && <EditorShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
     </form>
+  );
+}
+
+/** 编辑器的快捷键与粘贴行为说明，集中列出仅靠界面看不出来的隐藏能力。 */
+const editorShortcutGroups: { title: string; items: [keys: string, description: string][] }[] = [
+  {
+    title: "键盘快捷键",
+    items: [
+      ["Ctrl / ⌘ + B", "加粗选中文字，没有选区时插入占位文字"],
+      ["Ctrl / ⌘ + I", "斜体选中文字"],
+      ["Ctrl / ⌘ + K", "把选中文字变成链接"],
+      ["( [ { \" ' ` * _", "选中文字后按这些符号，用符号包裹选区，而不是替换掉选中内容"]
+    ]
+  },
+  {
+    title: "粘贴",
+    items: [
+      ["粘贴图片", "自动上传到图床并插入 Markdown 图片，上传期间先显示「图片上传中…」占位"],
+      ["粘贴网页内容", "保留正文，并把其中的图片转存到项目图床；个别图片转存失败时保留原始外链"]
+    ]
+  },
+  {
+    title: "工具栏",
+    items: [
+      ["标题 引用 列表", "作用于整行而不是光标处；选中多行时逐行添加，空行自动跳过"],
+      ["代码块", "两侧围栏各自独占一行，光标停在行中间时自动补换行"],
+      ["加粗 斜体 行内代码 链接", "包裹选区，没有选区时插入占位文字并选中"],
+      ["识别图片链接转md", "把正文里单独成行的图片 URL 转成 Markdown 图片"]
+    ]
+  }
+];
+
+function EditorShortcutsDialog(props: { onClose: () => void }) {
+  return (
+    <div className="dialog-backdrop" role="presentation">
+      <div className="login-dialog shortcuts-dialog" role="dialog" aria-modal="true" aria-label="编辑器快捷键说明">
+        <div className="dialog-header">
+          <h2>编辑器快捷键</h2>
+          <button className="icon-button subtle" type="button" onClick={props.onClose} aria-label="关闭">
+            <X size={18} />
+          </button>
+        </div>
+        {editorShortcutGroups.map((group) => (
+          <section className="shortcuts-group" key={group.title}>
+            <h3>{group.title}</h3>
+            {group.items.map(([keys, description]) => (
+              <div className="shortcuts-row" key={keys}>
+                <kbd>{keys}</kbd>
+                <span>{description}</span>
+              </div>
+            ))}
+          </section>
+        ))}
+      </div>
+    </div>
   );
 }
 

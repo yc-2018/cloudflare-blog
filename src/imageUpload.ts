@@ -1,4 +1,4 @@
-import { ApiRequestError, uploadImageFile } from "./api";
+import { ApiRequestError, uploadImageFile, uploadImageFromUrl } from "./api";
 import type { ImageHostProvider, ImageUploadResponse } from "./types";
 
 export const imageHostProviders: ImageHostProvider[] = ["imgbb", "pixhost"];
@@ -124,8 +124,20 @@ export function prepareCoverImageForUpload(file: File) {
   return prepareImageForUpload(file, { maxDimension: coverMaxDimension, quality: coverWebpQuality, reencodeWebp: true });
 }
 
-/** 按优先级依次通过可用的图床上传，并在本地记录失败情况。 */
+/** 按优先级依次通过可用的图床上传本地文件。 */
 export async function uploadImageWithFallback(file: File): Promise<ImageUploadResponse> {
+  return uploadWithFallback((provider) => uploadImageFile(file, provider));
+}
+
+/** 按优先级依次请求服务端把远程图片转存到可用的图床。 */
+export async function rehostImageWithFallback(sourceUrl: string): Promise<ImageUploadResponse> {
+  return uploadWithFallback((provider) => uploadImageFromUrl(sourceUrl, provider));
+}
+
+/** 依次尝试各个图床直到成功，并在本地记录失败情况。 */
+async function uploadWithFallback(
+  upload: (provider: ImageHostProvider) => Promise<ImageUploadResponse>
+): Promise<ImageUploadResponse> {
   const storage = browserStorage();
   const failures = readImageHostFailures(storage);
   const providers = orderedImageHostProviders(failures, Date.now());
@@ -133,7 +145,7 @@ export async function uploadImageWithFallback(file: File): Promise<ImageUploadRe
 
   for (const provider of providers) {
     try {
-      const result = await uploadImageFile(file, provider);
+      const result = await upload(provider);
       clearImageHostFailure(storage, provider);
       return result;
     } catch (error) {

@@ -167,6 +167,14 @@ export async function uploadImageFile(file: File, provider: ImageHostProvider) {
   return data;
 }
 
+/** 请求服务端抓取远程图片并转存到指定图床，浏览器无法直接读取跨站图片内容。 */
+export async function uploadImageFromUrl(sourceUrl: string, provider: ImageHostProvider) {
+  return requestJson<ImageUploadResponse>(`/api/uploads/remote?provider=${encodeURIComponent(provider)}`, {
+    method: "POST",
+    body: JSON.stringify({ url: sourceUrl })
+  });
+}
+
 export async function listMessages(articleId?: number | null, password = "", localIds: number[] = []) {
   const params = new URLSearchParams();
   if (articleId) params.set("articleId", String(articleId));
@@ -197,6 +205,13 @@ export async function updateMessageStatus(id: number, status: "pending" | "appro
   return requestJson<{ message: GuestbookMessage }>(`/api/messages/${id}/status`, {
     method: "POST",
     body: JSON.stringify({ status, invalid })
+  });
+}
+
+export async function updateMessage(id: number, content: string) {
+  return requestJson<{ message: GuestbookMessage }>(`/api/messages/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ content })
   });
 }
 

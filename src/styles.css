@@ -959,6 +959,30 @@ button {
   color: #31523d;
 }
 
+.message-edit-form {
+  display: grid;
+  gap: 8px;
+}
+
+.message-edit-form textarea {
+  width: 100%;
+  min-height: 96px;
+  border: 1px solid #d7d5cc;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: #fff;
+  color: #343b35;
+  font: inherit;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.message-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .message-content {
   margin: 0;
   color: #343b35;
@@ -1562,9 +1586,52 @@ button {
 
 .editor-compose-actions {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.editor-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.toolbar-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid #d7d5cc;
+  border-radius: 6px;
+  padding: 0 7px;
+  background: #fff;
+  color: #222720;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.toolbar-button:hover {
+  background: #f2f1ea;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: #ddddd3;
+}
+
+/* 移动端屏幕宽度不足以并排显示按钮，改为只保留粘贴与快捷键操作。 */
+@media (max-width: 720px) {
+  .editor-toolbar {
+    display: none;
+  }
 }
 
 .editor-convert-button {
@@ -1914,6 +1981,64 @@ textarea {
 .dialog-header h2 {
   margin: 0;
   font-size: 20px;
+}
+
+.shortcuts-dialog {
+  width: min(100%, 560px);
+  max-height: min(78vh, 680px);
+  overflow-y: auto;
+  gap: 14px;
+}
+
+.shortcuts-group {
+  display: grid;
+  gap: 8px;
+}
+
+.shortcuts-group h3 {
+  margin: 0;
+  color: #6a6f66;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shortcuts-row {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 12px;
+  align-items: baseline;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.shortcuts-row kbd {
+  padding: 3px 7px;
+  border: 1px solid #d7d5cc;
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  background: #f7f6f1;
+  color: #222720;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.shortcuts-row span {
+  color: #4a4f47;
+}
+
+@media (max-width: 560px) {
+  .shortcuts-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+
+  .shortcuts-row kbd {
+    justify-self: start;
+  }
 }
 
 .about-page {

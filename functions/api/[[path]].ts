@@ -118,6 +118,8 @@ const passwordAttemptWindowMs = 60 * 60 * 1000; // 失败尝试统计的时间�
 const passwordBanMs = 60 * 60 * 1000; // 失败尝试过多后的 IP 封禁时长。
 const imageUploadMaxBytes = 10 * 1024 * 1024; // 上传代理接受的最大转换后图片体积。
 const imageProviderTimeoutMs = 15 * 1000; // 等待第三方图床响应的最长时间。
+const remoteImageUserAgent =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"; // 抓取远程图片时使用的 UA，部分站点会拒绝无 UA 的请求。
 const imageExtensions: Record<string, string> = {
   "image/gif": "gif",
   "image/jpeg": "jpg",
@@ -212,10 +214,7 @@ async function handleUploads(context: EventContext<Env, string, unknown>, segmen
 
   if (segments.length === 0 && request.method === "POST") {
     await requireAuth(request, env);
-    const provider = new URL(request.url).searchParams.get("provider") as ImageHostProvider | null;
-    if (!provider || !["imgbb", "pixhost"].includes(provider)) {
-      throw new ApiError("BAD_REQUEST", "不支持的图床", 400);
-    }
+    const provider = requireImageHostProvider(request);
 
     const formData = await request.formData();
     const file = formData.get("file");
@@ -236,7 +235,81 @@ async function handleUploads(context: EventContext<Env, string, unknown>, segmen
     return json({ url, provider });
   }
 
+  if (segments.length === 1 && segments[0] === "remote" && request.method === "POST") {
+    await requireAuth(request, env);
+    const provider = requireImageHostProvider(request);
+    const sourceUrl = String((await readJson<{ url?: string }>(request)).url ?? "").trim(); // 待转存的原始图片地址。
+    const file = await downloadRemoteImage(sourceUrl);
+
+    const url = await uploadImageToProvider(provider, file, imageExtensions[file.type], env);
+    return json({ url, provider });
+  }
+
   return jsonError("METHOD_NOT_ALLOWED", "不支持的图片请求", 405);
+}
+
+/** 解析并校验上传请求中的图床参数。 */
+function requireImageHostProvider(request: Request) {
+  const provider = new URL(request.url).searchParams.get("provider") as ImageHostProvider | null;
+  if (!provider || !["imgbb", "pixhost"].includes(provider)) {
+    throw new ApiError("BAD_REQUEST", "不支持的图床", 400);
+  }
+  return provider;
+}
+
+/**
+ * 抓取管理员粘贴过来的远程图片，并校验其类型与体积。
+ * 浏览器受同源策略限制读不到跨站图片内容，因此这一步必须放在服务端。
+ */
+async function downloadRemoteImage(sourceUrl: string) {
+  let source: URL;
+  try {
+    source = new URL(sourceUrl);
+  } catch {
+    throw new ApiError("BAD_REQUEST", "原始图片地址无法解析", 400);
+  }
+  if (!["http:", "https:"].includes(source.protocol)) {
+    throw new ApiError("BAD_REQUEST", "只能转存 http 或 https 图片地址", 400);
+  }
+
+  const response = await fetchRemoteImage(source);
+
+  const contentType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase(); // 远程图片的 MIME 类型。
+  const extension = imageExtensions[contentType];
+  if (!extension) {
+    throw new ApiError("BAD_REQUEST", "原始地址不是受支持的图片格式", 400);
+  }
+
+  const blob = await response.blob();
+  if (blob.size <= 0 || blob.size > imageUploadMaxBytes) {
+    throw new ApiError("BAD_REQUEST", "图片大小需要在 10 MB 以内", 400);
+  }
+  return new File([blob], `image.${extension}`, { type: contentType });
+}
+
+/**
+ * 依次尝试不同的 Referer 抓取远程图片，返回第一个成功的响应。
+ * 各站点的防盗链策略正好相反：CSDN 的图片 CDN 会拒绝带图片自身域名的 Referer，
+ * 而另一些站点又要求带上站内 Referer，因此先不带、失败再回退带上。
+ */
+async function fetchRemoteImage(source: URL) {
+  const referers = ["", `${source.origin}/`]; // 按成功率排序的 Referer 候选，空字符串表示不发送该请求头。
+  let lastStatus = 0; // 最后一次失败的 HTTP 状态码，便于区分防盗链与地址失效。
+
+  for (const referer of referers) {
+    const response = await fetchWithTimeout(source.toString(), {
+      method: "GET",
+      headers: referer
+        ? { "User-Agent": remoteImageUserAgent, Referer: referer }
+        : { "User-Agent": remoteImageUserAgent }
+    });
+    if (response.ok) {
+      return response;
+    }
+    lastStatus = response.status;
+  }
+
+  throw new ApiError("UPLOAD_FAILED", `无法读取原始图片（HTTP ${lastStatus}），可能存在防盗链限制`, 502);
 }
 
 /** 将一张图片上传到所选的存储服务商。 */
@@ -606,6 +679,23 @@ async function handleMessages(context: EventContext<Env, string, unknown>, segme
     return json({ message: formatMessage(message, true) });
   }
 
+  if (segments.length === 1 && request.method === "PUT") {
+    await requireAuth(request, env);
+    const messageId = parsePositiveInteger(segments[0], 0);
+    if (!messageId) {
+      return jsonError("BAD_REQUEST", "留言 ID 不正确", 400);
+    }
+
+    const content = String((await readJson<{ content?: string }>(request)).content ?? "").trim(); // 管理员改写后的留言正文。
+    if (!content || content.length > messageContentMaxLength) {
+      return jsonError("BAD_REQUEST", `留言内容需要在 1 到 ${messageContentMaxLength} 个字符之间`, 400);
+    }
+
+    const message = await setMessageContent(env.DB, messageId, content);
+    if (!message) return jsonError("NOT_FOUND", "留言不存在", 404);
+    return json({ message: formatMessage(message, true) });
+  }
+
   if (segments.length === 1 && request.method === "DELETE") {
     await requireAuth(request, env);
     const messageId = parsePositiveInteger(segments[0], 0);
@@ -696,6 +786,21 @@ async function setMessageStatus(db: D1Database, messageId: number, status: Messa
       `
     )
     .bind(status, invalid ? 1 : 0, messageId)
+    .first<MessageRow>();
+}
+
+/** 仅由管理员改写留言正文，同时返回完整的留言数据行。 */
+async function setMessageContent(db: D1Database, messageId: number, content: string) {
+  return db
+    .prepare(
+      `
+        UPDATE guestbook_messages
+        SET content = ?
+        WHERE id = ?
+        RETURNING id, article_id, parent_id, nickname, email, content, author_hash, reply_to_nickname, status, created_at
+      `
+    )
+    .bind(content, messageId)
     .first<MessageRow>();
 }
 
