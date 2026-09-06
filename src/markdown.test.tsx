@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { fireEvent, render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { CommentContent, MarkdownRenderer } from "./App";
+import { CommentContent, MarkdownRenderer } from "./components/MarkdownRenderer";
 
 describe("MarkdownRenderer", () => {
   it("renders a single source line break as a visible line break", () => {

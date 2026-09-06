@@ -121,3 +121,8 @@ console.log(hello);
 \`\`\`
 `;
 }
+
+/** 将未知异常转换为界面可显示的错误消息。 */
+export function asErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "操作失败";
+}
