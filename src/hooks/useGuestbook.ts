@@ -102,7 +102,7 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
   const guestbookSubmittingRef = useRef(false);
   const guestbookActionRef = useRef("");
   const guestbookCaptchaRefreshingRef = useRef(false);
-  const messageScopeRef = useRef<string>("guestbook");
+  const messageContextIdRef = useRef(0); // 页面或登录状态变更时递增，使旧操作不再修改当前评论区。
   const messageRequestIdRef = useRef(0);
 
   useEffect(() => {
@@ -116,9 +116,21 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
   }, []);
 
   useEffect(() => {
+    setGuestbookMessages([]);
+    setGuestbookReplyTarget(null);
+    setGuestbookEditingId(null);
+    setGuestbookEditContent("");
+    setGuestbookCaptcha(null);
+    setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null, captchaToken: "", captchaAnswer: "" }));
     if (articleId !== undefined) {
       void refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
+    } else {
+      setGuestbookLoading(false);
     }
+    return () => {
+      messageContextIdRef.current += 1;
+      messageRequestIdRef.current += 1;
+    };
   }, [authenticated, articleId]);
 
   /** 重新加载留言板留言，并为当前访问者准备验证码状态。 */
@@ -126,12 +138,6 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
     const scope = articleId === null ? "guestbook" : `article-${articleId}`;
     const requestId = messageRequestIdRef.current + 1;
     messageRequestIdRef.current = requestId;
-    if (messageScopeRef.current !== scope) {
-      messageScopeRef.current = scope;
-      setGuestbookMessages([]);
-      setGuestbookReplyTarget(null);
-      setGuestbookDraft((currentDraft) => ({ ...currentDraft, parentId: null }));
-    }
     setGuestbookLoading(true);
     try {
       const pending = readPendingGuestbookMessages(scope);
@@ -173,12 +179,15 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
     }
 
     guestbookCaptchaRefreshingRef.current = true;
+    const contextId = messageContextIdRef.current;
     setGuestbookCaptchaRefreshing(true);
     try {
       const result = await getMessageCaptcha();
+      if (contextId !== messageContextIdRef.current) return;
       setGuestbookCaptcha(result.captcha);
       setGuestbookDraft((currentDraft) => ({ ...currentDraft, captchaToken: result.captcha.token, captchaAnswer: "" }));
     } catch (caught) {
+      if (contextId !== messageContextIdRef.current) return;
       setError(asErrorMessage(caught));
     } finally {
       guestbookCaptchaRefreshingRef.current = false;
@@ -202,6 +211,7 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
     }
 
     guestbookSubmittingRef.current = true;
+    const contextId = messageContextIdRef.current;
     setGuestbookSubmitting(true);
     try {
       const input = {
@@ -218,6 +228,7 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
         setGuestbookCooldown(guestbookCooldownSeconds);
         addPendingGuestbookMessage(articleId === null ? "guestbook" : `article-${articleId}`, created.message);
       }
+      if (contextId !== messageContextIdRef.current) return;
       setGuestbookDraft({
         ...defaultGuestbookDraft,
         nickname: guestbookDraft.nickname,
@@ -235,6 +246,7 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
       );
       await refreshGuestbook(articleId, input.articlePassword);
     } catch (caught) {
+      if (contextId !== messageContextIdRef.current) return;
       setError(asErrorMessage(caught));
       await refreshGuestbookCaptcha();
     } finally {
@@ -254,14 +266,17 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
     }
 
     const actionKey = `delete-${id}`;
+    const contextId = messageContextIdRef.current;
     guestbookActionRef.current = actionKey;
     setGuestbookAction(actionKey);
     setError("");
     try {
       await deleteMessage(id);
+      if (contextId !== messageContextIdRef.current) return;
       setMessage(`${articleId === null ? "留言" : "评论"}已删除`);
       await refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
     } catch (caught) {
+      if (contextId !== messageContextIdRef.current) return;
       setError(asErrorMessage(caught));
     } finally {
       guestbookActionRef.current = "";
@@ -273,14 +288,17 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
   async function changeGuestbookStatus(id: number, status: "pending" | "approved", invalid: boolean, articleId: number | null = null) {
     if (guestbookActionRef.current) return;
     const actionKey = `status-${id}`;
+    const contextId = messageContextIdRef.current;
     guestbookActionRef.current = actionKey;
     setGuestbookAction(actionKey);
     setError("");
     try {
       await updateMessageStatus(id, status, invalid);
+      if (contextId !== messageContextIdRef.current) return;
       setMessage(invalid ? "评论已标记为失效" : status === "approved" ? "评论已公开" : "评论已隐藏");
       await refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
     } catch (caught) {
+      if (contextId !== messageContextIdRef.current) return;
       setError(asErrorMessage(caught));
     } finally {
       guestbookActionRef.current = "";
@@ -292,16 +310,19 @@ export function useGuestbook({ authenticated, articleId, onError: setError, onMe
   async function editGuestbookMessage(id: number, content: string, articleId: number | null = null) {
     if (guestbookActionRef.current) return;
     const actionKey = `edit-${id}`;
+    const contextId = messageContextIdRef.current;
     guestbookActionRef.current = actionKey;
     setGuestbookAction(actionKey);
     setError("");
     try {
       await updateMessage(id, content);
+      if (contextId !== messageContextIdRef.current) return;
       setMessage("评论已更新");
       setGuestbookEditingId(null);
       setGuestbookEditContent("");
       await refreshGuestbook(articleId, articleId === null ? "" : currentArticlePassword(articleId));
     } catch (caught) {
+      if (contextId !== messageContextIdRef.current) return;
       setError(asErrorMessage(caught));
     } finally {
       guestbookActionRef.current = "";

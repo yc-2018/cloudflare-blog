@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Eye, EyeOff, Trash2 } from "lucide-react";
 import type { GuestbookCaptcha, GuestbookInput, GuestbookMessage } from "../types";
 import { formatDateTime } from "../utils";
@@ -185,7 +185,7 @@ function GuestbookMessageItem(props: {
   const statusChanging = props.action === `status-${props.message.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
-  const isEditing = props.editingId === props.message.id;
+  const isEditing = props.authenticated && props.editingId === props.message.id;
 
   return (
     <article className={props.message.invalid ? "message-card message-invalid" : "message-card"}>
@@ -240,32 +240,14 @@ function GuestbookMessageItem(props: {
         </div>
       </div>
       {isEditing ? (
-        <div className="message-edit-form">
-          <textarea
-            value={props.editContent}
-            onChange={(e) => props.onEditContentChange(e.target.value)}
-            maxLength={500}
-            rows={5}
-            autoFocus
-          />
-          <div className="message-edit-actions">
-            <button
-              className="text-button ghost"
-              type="button"
-              onClick={props.onEditCancel}
-            >
-              取消
-            </button>
-            <button
-              className="text-button primary"
-              type="button"
-              onClick={() => props.onEdit(props.message.id, props.editContent)}
-              disabled={!props.editContent.trim()}
-            >
-              保存
-            </button>
-          </div>
-        </div>
+        <MessageEditForm
+          messageId={props.message.id}
+          content={props.editContent}
+          action={props.action}
+          onChange={props.onEditContentChange}
+          onCancel={props.onEditCancel}
+          onSave={props.onEdit}
+        />
       ) : (
         <CommentContent content={props.message.content} />
       )}
@@ -313,7 +295,7 @@ function GuestbookReplyItem(props: {
   const statusChanging = props.action === `status-${props.reply.id}`;
   const deleting = props.action === deleteActionKey;
   const actionBusy = Boolean(props.action);
-  const isEditing = props.editingId === props.reply.id;
+  const isEditing = props.authenticated && props.editingId === props.reply.id;
 
   return (
     <article className={props.reply.invalid ? "message-reply message-invalid" : "message-reply"}>
@@ -369,36 +351,68 @@ function GuestbookReplyItem(props: {
         </div>
       </div>
       {isEditing ? (
-        <div className="message-edit-form">
-          <textarea
-            value={props.editContent}
-            onChange={(e) => props.onEditContentChange(e.target.value)}
-            maxLength={500}
-            rows={5}
-            autoFocus
-          />
-          <div className="message-edit-actions">
-            <button
-              className="text-button ghost"
-              type="button"
-              onClick={props.onEditCancel}
-            >
-              取消
-            </button>
-            <button
-              className="text-button primary"
-              type="button"
-              onClick={() => props.onEdit(props.reply.id, props.editContent)}
-              disabled={!props.editContent.trim()}
-            >
-              保存
-            </button>
-          </div>
-        </div>
+        <MessageEditForm
+          messageId={props.reply.id}
+          content={props.editContent}
+          action={props.action}
+          onChange={props.onEditContentChange}
+          onCancel={props.onEditCancel}
+          onSave={props.onEdit}
+        />
       ) : (
         <CommentContent content={props.reply.content} />
       )}
     </article>
+  );
+}
+
+/** 共用主评论与回复的编辑表单，仅在进入编辑时将光标移到正文末尾。 */
+function MessageEditForm(props: {
+  messageId: number;
+  content: string;
+  action: string;
+  onChange: (content: string) => void;
+  onCancel: () => void;
+  onSave: (id: number, content: string) => void;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const busy = Boolean(props.action); // 提交完成前冻结草稿，避免后续输入被成功回调清除。
+  const saving = props.action === `edit-${props.messageId}`;
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    textarea.scrollTop = textarea.scrollHeight;
+  }, []);
+
+  return (
+    <div className="message-edit-form">
+      <textarea
+        ref={textareaRef}
+        aria-label="编辑评论内容"
+        value={props.content}
+        onChange={(event) => props.onChange(event.target.value)}
+        maxLength={500}
+        rows={5}
+        disabled={busy}
+      />
+      <div className="message-edit-actions">
+        <button className="text-button ghost" type="button" onClick={props.onCancel} disabled={busy}>
+          取消
+        </button>
+        <button
+          className="text-button primary"
+          type="button"
+          onClick={() => props.onSave(props.messageId, props.content)}
+          disabled={busy || !props.content.trim()}
+        >
+          {saving && <ButtonSpinner />}
+          {saving ? "保存中..." : "保存"}
+        </button>
+      </div>
+    </div>
   );
 }
 
