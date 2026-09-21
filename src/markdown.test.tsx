@@ -186,6 +186,13 @@ describe("CommentContent", () => {
     expect(html).toContain('referrerPolicy="no-referrer"');
   });
 
+  it("renders highlight markers in comments while preserving inline Markdown", () => {
+    const html = renderToStaticMarkup(<CommentContent content="评论中的 ==高光==，以及 ==**重点**==。" />);
+
+    expect(html).toContain("<mark>高光</mark>");
+    expect(html).toContain("<mark><strong>重点</strong></mark>");
+  });
+
   it("rejects non-HTTPS comment images and does not render raw HTML", () => {
     const html = renderToStaticMarkup(
       <CommentContent content={'![不安全图片](http://example.com/comment.png)\n\n<img src="https://example.com/raw.png">'} />

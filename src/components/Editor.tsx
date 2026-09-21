@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import React from "react";
-import { ImageIcon, Keyboard } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Highlighter,
+  ImageIcon,
+  Keyboard,
+  ListChecks,
+  Minus,
+  MoreHorizontal,
+  Strikethrough,
+  Table2
+} from "lucide-react";
 import type { ArticleInput, Tag as TagType } from "../types";
 import { excerptFromContent } from "../utils";
 import {
@@ -55,7 +66,10 @@ const inlineFormats: Record<string, [before: string, after: string, placeholder:
   bold: ["**", "**", "加粗文字"],
   italic: ["*", "*", "斜体文字"],
   code: ["`", "`", "代码"],
-  link: ["[", "](url)", "链接文字"]
+  link: ["[", "](url)", "链接文字"],
+  strikethrough: ["~~", "~~", "删除线文字"],
+  highlight: ["==", "==", "高亮文字"],
+  kbd: ["<kbd>", "</kbd>", "按键"]
 };
 
 /** 管理文章草稿输入、Markdown 快捷编辑、图片上传与实时预览。 */
@@ -73,8 +87,12 @@ export function Editor(props: {
   const [uploadingTarget, setUploadingTarget] = useState<"cover" | "content" | "">("");
   const [autoExcerpt, setAutoExcerpt] = useState(() => !props.draft.excerpt.trim()); // 摘要是否跟随文章正文自动生成。
   const [shortcutsOpen, setShortcutsOpen] = useState(false); // 是否展开编辑器快捷键说明弹窗。
+  const [moreToolsOpen, setMoreToolsOpen] = useState(false); // 是否展开低频 Markdown 工具菜单。
+  const [tablePickerOpen, setTablePickerOpen] = useState(false); // 是否展开表格行列选择器。
+  const [tablePickerSize, setTablePickerSize] = useState<[number, number]>([3, 3]); // 当前预览的表格列数与行数。
   const draftRef = useRef(props.draft);
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const moreToolsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     draftRef.current = props.draft;
@@ -88,6 +106,33 @@ export function Editor(props: {
       }
     }
   }, [autoExcerpt]);
+
+  useEffect(() => {
+    if (!moreToolsOpen) {
+      return;
+    }
+
+    /** 点击菜单外部或按 Escape 时收起低频工具菜单。 */
+    function closeMoreTools(event: PointerEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent) {
+        if (event.key === "Escape") {
+          setMoreToolsOpen(false);
+        }
+        return;
+      }
+
+      if (moreToolsRef.current && !moreToolsRef.current.contains(event.target as Node)) {
+        setMoreToolsOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeMoreTools);
+    document.addEventListener("keydown", closeMoreTools);
+    return () => {
+      document.removeEventListener("pointerdown", closeMoreTools);
+      document.removeEventListener("keydown", closeMoreTools);
+    };
+  }, [moreToolsOpen]);
 
   /** 更新草稿及其供异步上传使用的同步 ref。 */
   function updateDraft(nextDraft: ArticleInput) {
@@ -384,6 +429,48 @@ export function Editor(props: {
     );
   }
 
+  /** 插入表格、任务列表或分隔线等块级 Markdown 模板，并选中可直接替换的示例文本。 */
+  function insertMarkdownTemplate(template: string, selectionOffset: number, selectionLength: number) {
+    const textarea = contentTextareaRef.current;
+    if (!textarea) return;
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const leading = selectionStart > 0 && value[selectionStart - 1] !== "\n" ? "\n" : "";
+    const trailing = selectionEnd < value.length && value[selectionEnd] !== "\n" ? "\n" : "";
+    const insertionStart = selectionStart + leading.length;
+    updateContent(
+      `${value.slice(0, selectionStart)}${leading}${template}${trailing}${value.slice(selectionEnd)}`,
+      insertionStart + selectionOffset,
+      insertionStart + selectionOffset + selectionLength
+    );
+  }
+
+  /** 根据选择的列数与总行数生成 GFM 表格，并选中第一个表头文字。 */
+  function insertTable(columns: number, rows: number) {
+    const headers = Array.from({ length: columns }, (_, index) => `表头 ${index + 1}`);
+    const divider = Array.from({ length: columns }, () => "---");
+    const bodyRows = Array.from({ length: rows - 1 }, () => Array.from({ length: columns }, () => "单元格"));
+    const template = [headers, divider, ...bodyRows].map((cells) => `| ${cells.join(" | ")} |`).join("\n");
+
+    insertMarkdownTemplate(template, 2, headers[0].length);
+    setTablePickerOpen(false);
+    setMoreToolsOpen(false);
+  }
+
+  /** 插入更多菜单中的低频 Markdown 格式。 */
+  function insertMoreMarkdown(format: string) {
+    if (format === "table") {
+      insertTable(3, 3);
+    } else if (format === "task") {
+      insertMarkdownTemplate("- [ ] 待办事项", 6, 4);
+    } else if (format === "hr") {
+      insertMarkdownTemplate("---", 0, 0);
+    } else {
+      insertMarkdown(format);
+    }
+    setMoreToolsOpen(false);
+  }
+
   /** 按工具栏按钮插入对应的 Markdown 语法。 */
   function insertMarkdown(format: string) {
     const lineFormat = linePrefixFormats[format];
@@ -538,6 +625,12 @@ export function Editor(props: {
                     <button className="toolbar-button" type="button" onClick={() => insertMarkdown("code")} title="行内代码" aria-label="行内代码">
                       {'<>'}
                     </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("strikethrough")} title="删除线" aria-label="删除线">
+                      <Strikethrough size={15} />
+                    </button>
+                    <button className="toolbar-button" type="button" onClick={() => insertMarkdown("highlight")} title="高亮文本" aria-label="高亮文本">
+                      <Highlighter size={15} />
+                    </button>
                     <span className="toolbar-divider" />
                     <button className="toolbar-button" type="button" onClick={() => insertMarkdown("link")} title="链接 (Ctrl+K)" aria-label="链接">
                       🔗
@@ -555,6 +648,106 @@ export function Editor(props: {
                       {'{ }'}
                     </button>
                     <span className="toolbar-divider" />
+                    <div className="toolbar-more" ref={moreToolsRef}>
+                      <button
+                        className="toolbar-button toolbar-more-trigger"
+                        type="button"
+                        onClick={() => setMoreToolsOpen((open) => !open)}
+                        title="更多 Markdown 格式"
+                        aria-label="更多 Markdown 格式"
+                        aria-haspopup="menu"
+                        aria-expanded={moreToolsOpen}
+                      >
+                        <MoreHorizontal size={15} />
+                        <ChevronDown size={12} />
+                      </button>
+                      {moreToolsOpen && (
+                        <div className="toolbar-menu" role="menu" aria-label="更多 Markdown 格式">
+                          <button
+                            className="toolbar-menu-item"
+                            type="button"
+                            role="menuitem"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => insertMoreMarkdown("kbd")}
+                          >
+                            <Keyboard size={15} />
+                            键帽标签
+                            <span>&lt;kbd&gt;</span>
+                          </button>
+                          <button
+                            className="toolbar-menu-item"
+                            type="button"
+                            role="menuitem"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => setTablePickerOpen((open) => !open)}
+                            aria-haspopup="grid"
+                            aria-expanded={tablePickerOpen}
+                          >
+                            <Table2 size={15} />
+                            表格
+                            <span className="toolbar-menu-item-trailing">
+                              {tablePickerOpen ? `${tablePickerSize[0]} × ${tablePickerSize[1]}` : "GFM"}
+                              <ChevronRight size={13} />
+                            </span>
+                          </button>
+                          {tablePickerOpen && (
+                            <div className="table-picker" role="group" aria-label="选择表格尺寸">
+                              <div className="table-picker-heading">
+                                <span>选择表格尺寸</span>
+                                <strong>
+                                  {tablePickerSize[0]} 列 × {tablePickerSize[1]} 行
+                                </strong>
+                              </div>
+                              <div className="table-picker-grid" role="grid" aria-label="表格行列">
+                                {Array.from({ length: 8 }, (_, rowIndex) =>
+                                  Array.from({ length: 8 }, (_, columnIndex) => {
+                                    const columns = columnIndex + 1;
+                                    const rows = rowIndex + 1;
+                                    const active = columns <= tablePickerSize[0] && rows <= tablePickerSize[1];
+                                    return (
+                                      <button
+                                        className={active ? "table-picker-cell active" : "table-picker-cell"}
+                                        key={`${columns}-${rows}`}
+                                        type="button"
+                                        role="gridcell"
+                                        aria-label={`${columns} 列 ${rows} 行`}
+                                        onMouseDown={(event) => event.preventDefault()}
+                                        onMouseEnter={() => setTablePickerSize([columns, rows])}
+                                        onFocus={() => setTablePickerSize([columns, rows])}
+                                        onClick={() => insertTable(columns, rows)}
+                                      />
+                                    );
+                                  })
+                                )}
+                              </div>
+                              <span className="table-picker-hint">含表头</span>
+                            </div>
+                          )}
+                          <button
+                            className="toolbar-menu-item"
+                            type="button"
+                            role="menuitem"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => insertMoreMarkdown("task")}
+                          >
+                            <ListChecks size={15} />
+                            任务列表
+                            <span>- [ ]</span>
+                          </button>
+                          <button
+                            className="toolbar-menu-item"
+                            type="button"
+                            role="menuitem"
+                            onMouseDown={(event) => event.preventDefault()}
+                            onClick={() => insertMoreMarkdown("hr")}
+                          >
+                            <Minus size={15} />
+                            分隔线
+                            <span>---</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                     <button
                       className="toolbar-button"
                       type="button"

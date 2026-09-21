@@ -31,6 +31,7 @@ const commentMarkdownElements = [
   "strong",
   "em",
   "del",
+  "mark",
   "code",
   "pre",
   "blockquote",
@@ -72,7 +73,7 @@ export function CommentContent(props: { content: string }) {
     <div className="message-content">
       <ReactMarkdown
         allowedElements={commentMarkdownElements}
-        remarkPlugins={[remarkGfm, remarkSoftLineBreaks]}
+        remarkPlugins={[remarkGfm, remarkSoftLineBreaks, remarkHighlightMark, remarkHighlightMarkElement]}
         skipHtml
         unwrapDisallowed
         urlTransform={transformCommentUrl}
