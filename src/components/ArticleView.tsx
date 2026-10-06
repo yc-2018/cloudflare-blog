@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import React from "react";
 import { ArrowLeft, ArrowUp, FilePenLine, Share2, Trash2 } from "lucide-react";
 import type { Article } from "../types";
-import { formatArticleTimeTitle, formatDate } from "../utils";
+import { formatDateTime } from "../utils";
 import { ArticleViewCount } from "../ArticleViewCount";
 import { ButtonSpinner } from "./Feedback";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -21,6 +21,8 @@ export function ArticleView(props: {
   comments: React.ReactNode;
 }) {
   const [showBackToTop, setShowBackToTop] = useState(false); // 文章详情是否已滚动到足以显示快捷按钮的程度。
+  const createdText = formatDateTime(props.article.createdAt); // 文章创建时间的本地展示文本。
+  const updatedText = formatDateTime(props.article.updatedAt); // 文章最后修改时间的本地展示文本。
 
   useEffect(() => {
     /** 根据文章页滚动位置更新悬浮快捷按钮的可见性。 */
@@ -58,9 +60,13 @@ export function ArticleView(props: {
         <div className="article-meta">
           <strong className="article-meta-title">{props.article.title}</strong>
           <span className="dot" aria-hidden="true" />
-          <span title={formatArticleTimeTitle(props.article.createdAt, props.article.updatedAt)}>
-            {formatDate(props.article.updatedAt)}
-          </span>
+          <span>创建 {createdText}</span>
+          {updatedText !== createdText && (
+            <>
+              <span className="dot" aria-hidden="true" />
+              <span>修改 {updatedText}</span>
+            </>
+          )}
           <span className="dot" aria-hidden="true" />
           <ArticleViewCount count={props.article.viewCount} />
           {props.deleted && (

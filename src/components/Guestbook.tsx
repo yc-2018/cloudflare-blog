@@ -1,9 +1,22 @@
 import React, { useEffect, useRef } from "react";
-import { Eye, EyeOff, Trash2 } from "lucide-react";
+import { Bold, Code, Eye, EyeOff, Highlighter, Link, Quote, Strikethrough, Trash2 } from "lucide-react";
 import type { GuestbookCaptcha, GuestbookInput, GuestbookMessage } from "../types";
 import { formatDateTime } from "../utils";
 import { ButtonSpinner, EmptyState } from "./Feedback";
 import { CommentContent } from "./MarkdownRenderer";
+
+/** 评论工具栏支持的行内 Markdown 语法：[前缀, 后缀, 无选区时的占位文字]。 */
+const commentInlineFormats = {
+  bold: ["**", "**", "加粗文字"],
+  strikethrough: ["~~", "~~", "删除线文字"],
+  highlight: ["==", "==", "高亮文字"],
+  code: ["`", "`", "代码"],
+  link: ["[", "](url)", "链接文字"]
+} satisfies Record<string, [before: string, after: string, placeholder: string]>;
+
+const quotePrefix = "> "; // 引用语法只有写在行首才会被解析。
+
+const quotePlaceholder = "引用文字"; // 在空行插入引用时补入的示例文字。
 
 /** 渲染留言板或文章评论的受控表单与留言列表。 */
 export function Guestbook(props: {
@@ -34,6 +47,8 @@ export function Guestbook(props: {
 }) {
   const canSubmit = props.authenticated || props.cooldown === 0;
   const articleMode = props.mode === "article";
+  const contentFieldId = articleMode ? "article-comment-content" : "guestbook-content"; // 正文输入框的 id，供标签与工具栏关联。
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   /** 更新受控留言板草稿中的一个字段。 */
   function setDraftField<Key extends keyof GuestbookInput>(key: Key, value: GuestbookInput[Key]) {
@@ -55,9 +70,19 @@ export function Guestbook(props: {
           </div>
         )}
         <form className="guestbook-form" onSubmit={props.onSubmit}>
-          <label className="guestbook-content-field">
-            {articleMode ? "评论" : "留言"}
+          <div className="guestbook-content-field">
+            <div className="guestbook-content-heading">
+              <label htmlFor={contentFieldId}>{articleMode ? "评论" : "留言"}</label>
+              <CommentMarkdownToolbar
+                label={articleMode ? "评论格式快捷按钮" : "留言格式快捷按钮"}
+                maxLength={500}
+                textareaRef={contentTextareaRef}
+                onChange={(content) => setDraftField("content", content)}
+              />
+            </div>
             <textarea
+              id={contentFieldId}
+              ref={contentTextareaRef}
               required
               maxLength={500}
               rows={5}
@@ -66,7 +91,7 @@ export function Guestbook(props: {
               placeholder={articleMode ? "写下对这篇文章的想法" : "写下想说的话"}
             />
             <span className="field-hint">{props.draft.content.length}/500</span>
-          </label>
+          </div>
           <div className="guestbook-fields">
             <label>
               昵称
@@ -162,6 +187,116 @@ export function Guestbook(props: {
             />
           ))}
       </section>
+    </div>
+  );
+}
+
+/** 评论输入框右上角的 Markdown 快捷按钮，包裹选区或在无选区时插入占位文字。 */
+function CommentMarkdownToolbar(props: {
+  label: string;
+  maxLength: number;
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  onChange: (content: string) => void;
+}) {
+  /** 写入新正文，并在受控 value 被重设后恢复选区，否则浏览器会把光标推到文末。 */
+  function applyContent(value: string, selectionStart: number, selectionEnd: number) {
+    if (value.length > props.maxLength) {
+      return; // 插入后会超出长度上限，放弃本次操作，避免正文被后端拒绝。
+    }
+
+    props.onChange(value);
+    window.requestAnimationFrame(() => {
+      const textarea = props.textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+    });
+  }
+
+  /** 在选区两侧插入包裹符号，无选区时插入占位文字并选中它。 */
+  function wrapSelection([before, after, placeholder]: [string, string, string]) {
+    const textarea = props.textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const textToInsert = value.slice(selectionStart, selectionEnd) || placeholder; // 被包裹的文本，无选区时退化为占位文字。
+
+    applyContent(
+      `${value.slice(0, selectionStart)}${before}${textToInsert}${after}${value.slice(selectionEnd)}`,
+      selectionStart + before.length,
+      selectionStart + before.length + textToInsert.length
+    );
+  }
+
+  /** 为选区覆盖的每一非空行加上引用前缀，光标停在空行时补入占位文字。 */
+  function prefixQuoteLines() {
+    const textarea = props.textareaRef.current;
+    if (!textarea) {
+      return;
+    }
+
+    const { selectionStart, selectionEnd, value } = textarea;
+    const rangeEnd = selectionEnd > selectionStart && value[selectionEnd - 1] === "\n" ? selectionEnd - 1 : selectionEnd; // 选区以换行结尾时不把下一行算进来。
+    const blockStart = value.lastIndexOf("\n", selectionStart - 1) + 1; // 选区首行的行首偏移。
+    const lineBreak = value.indexOf("\n", rangeEnd);
+    const blockEnd = lineBreak === -1 ? value.length : lineBreak; // 选区末行的行尾偏移。
+    const block = value.slice(blockStart, blockEnd);
+
+    if (!block.trim()) {
+      // 空行上只加前缀会留下一个孤立的 ">"，因此补上占位文字并选中它。
+      applyContent(
+        `${value.slice(0, blockStart)}${quotePrefix}${quotePlaceholder}${value.slice(blockEnd)}`,
+        blockStart + quotePrefix.length,
+        blockStart + quotePrefix.length + quotePlaceholder.length
+      );
+      return;
+    }
+
+    const quoted = block
+      .split("\n")
+      .map((line) => (line.trim() ? `${quotePrefix}${line}` : line))
+      .join("\n");
+
+    applyContent(`${value.slice(0, blockStart)}${quoted}${value.slice(blockEnd)}`, blockStart, blockStart + quoted.length);
+  }
+
+  return (
+    <div className="guestbook-toolbar" role="group" aria-label={props.label}>
+      <button className="toolbar-button" type="button" onClick={() => wrapSelection(commentInlineFormats.bold)} title="加粗" aria-label="加粗">
+        <Bold size={14} />
+      </button>
+      <button
+        className="toolbar-button"
+        type="button"
+        onClick={() => wrapSelection(commentInlineFormats.strikethrough)}
+        title="删除线"
+        aria-label="删除线"
+      >
+        <Strikethrough size={14} />
+      </button>
+      <button
+        className="toolbar-button"
+        type="button"
+        onClick={() => wrapSelection(commentInlineFormats.highlight)}
+        title="高亮文本"
+        aria-label="高亮文本"
+      >
+        <Highlighter size={14} />
+      </button>
+      <button className="toolbar-button" type="button" onClick={() => wrapSelection(commentInlineFormats.code)} title="行内代码" aria-label="行内代码">
+        <Code size={14} />
+      </button>
+      <button className="toolbar-button" type="button" onClick={() => wrapSelection(commentInlineFormats.link)} title="链接" aria-label="链接">
+        <Link size={14} />
+      </button>
+      <button className="toolbar-button" type="button" onClick={prefixQuoteLines} title="引用" aria-label="引用">
+        <Quote size={14} />
+      </button>
     </div>
   );
 }

@@ -807,6 +807,24 @@ button {
 
 .guestbook-content-field {
   position: relative;
+  display: grid;
+  gap: 7px;
+}
+
+/* 正文标签在左、Markdown 快捷按钮在右。 */
+.guestbook-content-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.guestbook-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
 .field-hint {
